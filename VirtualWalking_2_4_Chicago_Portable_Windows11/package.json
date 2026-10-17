@@ -1,0 +1,40 @@
+{
+  "name": "virtualwalking-portable",
+  "version": "2.4.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable --x64",
+    "test": "node web/test-parser.cjs && node web/test-video-manager.cjs && node --check web/app.js && node --check web/video-manager.js && node --check main.cjs && node --check web/chicago.js && node --check preload.cjs"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "de.virtualwalking.portable",
+    "productName": "VirtualWalking",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "web/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "VirtualWalking-Portable-${version}.${ext}"
+    }
+  }
+}
