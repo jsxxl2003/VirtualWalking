@@ -1,0 +1,43 @@
+name: Windows Portable EXE
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Find VirtualWalking project
+        id: project
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path . -Filter package.json -File -Recurse | Where-Object { $_.FullName -notmatch '[\\/]node_modules[\\/]' })
+          if ($files.Count -ne 1) { throw "Expected exactly one package.json; found $($files.Count)" }
+          $project = $files[0].Directory.FullName
+          "directory=$project" >> $env:GITHUB_OUTPUT
+          Write-Host "Building from $project"
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install
+        working-directory: ${{ steps.project.outputs.directory }}
+      - name: Test
+        shell: pwsh
+        run: npm test
+        working-directory: ${{ steps.project.outputs.directory }}
+      - name: Build portable Windows EXE
+        shell: pwsh
+        run: npm run dist:win
+        working-directory: ${{ steps.project.outputs.directory }}
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualWalking-Windows-Portable
+          path: '**/dist/*.exe'
+          if-no-files-found: error
