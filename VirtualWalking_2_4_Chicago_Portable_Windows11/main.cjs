@@ -128,7 +128,7 @@ function discoverTvReceivers(){
 function tvHttpGet(url,expectedIp){
  return new Promise((resolve,reject)=>{
   let u;try{u=new URL(url);}catch{return reject(Error('Ungültige TV-Adresse'));}
-  if(u.protocol!=='http:'||u.hostname!==expectedIp||!['80','8008','8009',''].includes(u.port))return reject(Error('TV-Adresse oder Port nicht freigegeben'));
+  if(u.protocol!=='http:'||u.hostname!==expectedIp||(u.port&&(!Number.isInteger(Number(u.port))||Number(u.port)<1||Number(u.port)>65535)))return reject(Error('TV-Adresse oder Port nicht freigegeben'));
   const req=http.get(u,{timeout:3000,headers:{'User-Agent':'VirtualWalking/2.4'}},res=>{
    let body='',size=0;
    res.on('data',chunk=>{size+=chunk.length;if(size>65536){req.destroy(Error('TV-Antwort zu groß'));return;}body+=chunk.toString('utf8');});
