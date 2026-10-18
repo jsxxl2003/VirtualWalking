@@ -36,6 +36,20 @@ async function writeProfile(data){
  await fsp.rename(temp,file);
  return clean;
 }
+function youtubeVideoTitle(id){
+ if(!/^[A-Za-z0-9_-]{11}$/.test(String(id||'')))return Promise.reject(Error('Ungültige Video-ID'));
+ return new Promise((resolve,reject)=>{
+  const url='https://www.youtube.com/oembed?url='+encodeURIComponent('https://www.youtube.com/watch?v='+id)+'&format=json';
+  const req=https.get(url,{headers:{'User-Agent':'Mozilla/5.0 (VirtualWalking)'}},res=>{
+   if(res.statusCode!==200){res.resume();return reject(Error('YouTube-Titel nicht verfügbar (HTTP '+res.statusCode+')'));}
+   let data='';res.setEncoding('utf8');
+   res.on('data',chunk=>{data+=chunk;if(data.length>65536)req.destroy(Error('Antwort zu groß'));});
+   res.on('end',()=>{try{const title=JSON.parse(data).title;if(typeof title!=='string'||!title.trim())throw Error('Kein Titel');resolve(title.trim().slice(0,200));}catch(e){reject(e);}});
+  });
+  req.setTimeout(8000,()=>req.destroy(Error('Zeitüberschreitung beim Abruf des Titels')));
+  req.on('error',reject);
+ });
+}
 function lastVideoFile(){return path.join(app.getPath('userData'),'last-video.json');}
 function validLastVideo(data){
  if(!data||typeof data!=='object')return null;
@@ -396,6 +410,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:read-profile',()=>readProfile());
  ipcMain.handle('vw:write-profile',(_event,data)=>writeProfile(data));
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
+ ipcMain.handle('vw:youtube-title',(_event,id)=>youtubeVideoTitle(id));
  ipcMain.handle('vw:last-video-read',()=>readLastVideo());
  ipcMain.handle('vw:last-video-write',(_event,data)=>writeLastVideo(data));
  ipcMain.handle('vw:lounge-status',async()=>({paired:!!(await loungeRead()).screenId}));
