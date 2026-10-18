@@ -193,6 +193,8 @@ $('loungePlay').addEventListener('click',async()=>{
  btn.disabled=true;$('loungeStatus').textContent='Video wird an die YouTube-App auf dem Philips gesendet …';
  try{await window.vwDesktop.loungePlay(tvSource.youtubeId);
   remoteTvMode=true;remoteTvPlaying=true;manager.pause();$('video').pause();
+  // Sending a playlist starts TV playback; match the current training state immediately.
+  if(!session?.running)remoteTvSetPlaying(false);
   $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
   $('loungeStatus').textContent='TV-Modus aktiv: App-Player pausiert. Nur der Philips soll abspielen.';
   updateVideoSync();
