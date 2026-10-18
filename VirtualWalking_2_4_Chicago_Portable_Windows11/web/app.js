@@ -218,7 +218,7 @@ $('loungePlay').addEventListener('click',()=>{
 $('loungeBackToApp').addEventListener('click',async()=>{
  const btn=$('loungeBackToApp');btn.disabled=true;
  try{
-  await window.vwDesktop.loungePause();
+  if(remoteTvLoaded)await window.vwDesktop.loungePause();
   remoteTvMode=false;remoteTvPlaying=false;remoteTvLoaded=false;remoteTvVideoId=null;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
   if(session?.running)manager.play();
   $('loungeStatus').textContent='App-Modus aktiv: Pause-Befehl an Philips gesendet.';
@@ -333,7 +333,7 @@ document.addEventListener('keydown',event=>{
   event.preventDefault();renderVideoFullscreen(false);window.vwDesktop.setDesktopFullscreen(false).catch(e=>announce('Vollbild: '+e.message));
  }
 });
-function videoReset(){if(remoteTvMode&&remoteTvLoaded)remoteTvSetPlaying(false);remoteTvLoaded=false;remoteTvVideoId=null;tvSource=null;manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
+function videoReset(){if(remoteTvMode&&remoteTvLoaded){remoteTvQueue=remoteTvQueue.catch(()=>{}).then(()=>window.vwDesktop.loungePause()).catch(e=>{$('loungeStatus').textContent='TV-Pause fehlgeschlagen: '+e.message;});}remoteTvLoaded=false;remoteTvPlaying=false;remoteTvVideoId=null;tvSource=null;manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
 function loadFile(file){if(!file)return;videoReset();try{const filePath=window.vwDesktop?.localFilePath(file);if(filePath)tvSource={kind:'local',path:filePath};}catch{}videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
 $('fileInput').onchange=e=>loadFile(e.target.files[0]);
 function youtubeId(u){try{const x=new URL(u);let host=x.hostname.replace(/^www\./,'');if(host==='youtu.be')return x.pathname.split('/')[1];if(['youtube.com','m.youtube.com','youtube-nocookie.com'].includes(host)){if(x.pathname==='/watch')return x.searchParams.get('v');let match=x.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/);return match?.[1]??null;}}catch{}return null;}
