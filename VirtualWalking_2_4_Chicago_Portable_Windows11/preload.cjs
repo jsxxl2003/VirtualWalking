@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('vwDesktop',{
  setDesktopFullscreen:enabled=>ipcRenderer.invoke('vw:desktop-fullscreen',enabled),
  onDesktopFullscreenState:callback=>ipcRenderer.on('vw:desktop-fullscreen-state',(_e,active)=>callback(active)),
  discoverTv:()=>ipcRenderer.invoke('vw:discover-tv'),
+ lastVideoRead:()=>ipcRenderer.invoke('vw:last-video-read'),
+ lastVideoWrite:data=>ipcRenderer.invoke('vw:last-video-write',data),
  loungeStatus:()=>ipcRenderer.invoke('vw:lounge-status'),
  loungePair:code=>ipcRenderer.invoke('vw:lounge-pair',code),
  loungePlay:id=>ipcRenderer.invoke('vw:lounge-play',id),
