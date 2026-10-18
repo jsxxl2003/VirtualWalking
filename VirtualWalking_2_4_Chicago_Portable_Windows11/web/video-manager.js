@@ -37,11 +37,26 @@
   }
   setTargetRate(rate){
    this.targetRate=clamp(Number.isFinite(rate)?rate:1,.5,2);
-   if(this.kind==='youtube')return;
+   if(this.kind==='youtube'){
+    // YouTube supports only the rates exposed by its official IFrame Player API.
+    // Pick the nearest supported rate; do not send commands until the player is ready.
+    if(!this.youtube||typeof this.youtube.setPlaybackRate!=='function')return null;
+    try{
+     const available=this.youtube.getAvailablePlaybackRates?.()||[];
+     if(!available.length)return null;
+     const allowed=available.filter(r=>Number.isFinite(r)&&r>0);
+     if(!allowed.length)return null;
+     const closest=allowed.reduce((best,r)=>Math.abs(r-this.targetRate)<Math.abs(best-this.targetRate)?r:best);
+     const current=this.youtube.getPlaybackRate?.();
+     if(current!==closest)this.youtube.setPlaybackRate(closest);
+     return closest;
+    }catch(e){this.onMessage('YouTube-Tempo konnte nicht geändert werden: '+e.message);return null;}
+   }
    if(this.kind!=='none'){
     const next=smooth(this.video.playbackRate,this.targetRate,.22);
     if(Math.abs(next-this.video.playbackRate)>.004)this.video.playbackRate=next;
    }
+   return this.targetRate;
   }
   event(name){
    if(this.kind!=='online'&&this.kind!=='html5')return;
