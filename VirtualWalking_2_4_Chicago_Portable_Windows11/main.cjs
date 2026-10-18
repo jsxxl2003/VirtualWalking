@@ -1,5 +1,5 @@
  'use strict';
-const {app,BrowserWindow,session,shell,ipcMain,dialog,Menu}=require('electron');
+const {app,BrowserWindow,session,shell,ipcMain,dialog,Menu,screen}=require('electron');
 const http=require('node:http');
 const https=require('node:https');
 const fs=require('node:fs');
@@ -7,7 +7,7 @@ const fsp=require('node:fs/promises');
 const path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const {pipeline}=require('node:stream/promises');
-let server,win,port,downloadBusy=false;
+let server,win,tvWin,port,downloadBusy=false,tvMediaPath=null,tvCurrent=null;
 const supported={'.mp4':'video/mp4','.webm':'video/webm'};
 function libraryDir(){let base;try{base=app.getPath('videos');}catch{base=app.getPath('documents');}return path.join(base,'VirtualWalking','Chicago');}
 async function ensureDir(){await fsp.mkdir(libraryDir(),{recursive:true});}
@@ -27,10 +27,28 @@ async function serveVideo(req,res,id){const entries=await list(),entry=entries.f
   if(req.method==='HEAD')return res.end();fs.createReadStream(file,{start,end}).on('error',()=>res.destroy()).pipe(res);
  }else{res.writeHead(200,{'Content-Length':total});if(req.method==='HEAD')return res.end();fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);}
 }
+async function serveTvMedia(req,res){
+ if(!tvMediaPath)return failResponse(res,404);
+ let stat;try{stat=await fsp.stat(tvMediaPath);if(!stat.isFile())throw Error();}catch{return failResponse(res,404);}
+ const total=stat.size,ext=path.extname(tvMediaPath).toLowerCase(),range=req.headers.range;
+ if(!supported[ext])return failResponse(res,415);
+ res.setHeader('Content-Type',supported[ext]);res.setHeader('Accept-Ranges','bytes');res.setHeader('Cache-Control','no-store');
+ let start=0,end=total-1;
+ if(range){const match=/^bytes=(\d*)-(\d*)$/.exec(range);if(!match)return failResponse(res,416);
+  if(match[1])start=Number(match[1]);if(match[2])end=Number(match[2]);
+  if(!match[1]&&match[2]){start=Math.max(0,total-Number(match[2]));end=total-1;}
+  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>=total||start>end){res.setHeader('Content-Range',`bytes */${total}`);return failResponse(res,416);}
+  end=Math.min(end,total-1);
+ }
+ res.writeHead(range?206:200,{'Content-Length':end-start+1,...(range?{'Content-Range':`bytes ${start}-${end}/${total}`}:{})});
+ if(req.method==='HEAD')return res.end();
+ fs.createReadStream(tvMediaPath,{start,end}).on('error',()=>res.destroy()).pipe(res);
+}
 function startServer(){return new Promise((resolve,reject)=>{
  server=http.createServer(async(req,res)=>{try{
-  const u=new URL(req.url,'http://127.0.0.1');if(/^\/library\/[0-9a-f-]{36}$/.test(u.pathname))return await serveVideo(req,res,u.pathname.split('/')[2]);
-  const name={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/video-manager.js':'video-manager.js','/styles.css':'styles.css','/chicago.js':'chicago.js'}[u.pathname];
+  const u=new URL(req.url,'http://127.0.0.1');if(u.pathname==='/tv-media')return await serveTvMedia(req,res);
+  if(/^\/library\/[0-9a-f-]{36}$/.test(u.pathname))return await serveVideo(req,res,u.pathname.split('/')[2]);
+  const name={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/video-manager.js':'video-manager.js','/styles.css':'styles.css','/chicago.js':'chicago.js','/tv.html':'tv.html','/tv.js':'tv.js'}[u.pathname];
   if(!name)return failResponse(res,404);
   fs.readFile(path.join(__dirname,'web',name),(err,data)=>{if(err)return failResponse(res,500);res.writeHead(200,{'Content-Type':name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html','X-Content-Type-Options':'nosniff'});res.end(data);});
  }catch{return failResponse(res,500);}});server.once('error',reject);server.listen(0,'127.0.0.1',()=>resolve(server.address().port));
@@ -74,10 +92,49 @@ async function downloadVideo({url,name,permission}){
   win?.webContents.send('vw:download-progress',{done:true,received,total:received});return publicEntries(entries);
  }finally{downloadBusy=false;if(temp)await fsp.unlink(temp).catch(()=>{});}
 }
+function tvDisplay(){
+ const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
+ return all.find(d=>d.id!==primary.id)||null;
+}
+async function openTv(){
+ const display=tvDisplay();
+ if(!display)throw Error('Kein zweiter Bildschirm erkannt. Bitte Windows-Anzeige auf Erweitern stellen.');
+ if(tvWin&&!tvWin.isDestroyed()){tvWin.focus();return true;}
+ const {x,y,width,height}=display.bounds;
+ tvWin=new BrowserWindow({x,y,width,height,frame:false,fullscreen:true,autoHideMenuBar:true,
+  webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(__dirname,'preload.cjs')}});
+ tvWin.on('closed',()=>{tvWin=null;win?.webContents.send('vw:tv-closed');});
+ tvWin.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+ await tvWin.loadURL(`http://127.0.0.1:${port}/tv.html`);
+ if(tvCurrent)tvWin.webContents.send('vw:tv-load',tvCurrent);
+ return true;
+}
 app.whenReady().then(async()=>{
  port=await startServer();
  session.defaultSession.setPermissionCheckHandler((_wc,p)=>p==='bluetooth'||p==='bluetoothScanning');
  session.defaultSession.setPermissionRequestHandler((_wc,p,cb)=>cb(p==='bluetooth'||p==='bluetoothScanning'));
+ ipcMain.handle('vw:tv-open',async()=>openTv());
+ ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
+ ipcMain.handle('vw:tv-load',async(_event,data)=>{
+  if(!data||typeof data!=='object')throw Error('Ungültige Videoangaben');
+  if(data.kind==='youtube'){
+   if(!/^[a-zA-Z0-9_-]{11}$/.test(data.youtubeId||''))throw Error('Ungültige YouTube-ID');
+   tvCurrent={kind:'youtube',youtubeId:data.youtubeId};
+  }else if(data.kind==='local'){
+   const file=String(data.path||'');
+   if(!supported[path.extname(file).toLowerCase()])throw Error('Nur MP4/WebM unterstützt');
+   const stat=await fsp.stat(file);if(!stat.isFile())throw Error('Keine Videodatei');
+   tvMediaPath=file;tvCurrent={kind:'html5',url:`http://127.0.0.1:${port}/tv-media`};
+  }else if(data.kind==='url'){
+   const u=new URL(data.url);
+   if(!['http:','https:'].includes(u.protocol))throw Error('Ungültige Video-URL');
+   if(u.protocol==='http:'&&!['127.0.0.1','localhost'].includes(u.hostname))throw Error('Unsichere Video-URL');
+   tvCurrent={kind:'html5',url:u.toString()};
+  }else throw Error('Kein unterstütztes Video');
+  if(tvWin&&!tvWin.isDestroyed())tvWin.webContents.send('vw:tv-load',tvCurrent);
+  return true;
+ });
+ ipcMain.on('vw:tv-state',(_event,state)=>{if(tvWin&&!tvWin.isDestroyed()&&state&&typeof state==='object')tvWin.webContents.send('vw:tv-state',state);});
  ipcMain.handle('vw:list-chicago',async()=>publicEntries(await list()));
  ipcMain.handle('vw:import-chicago',importFiles);
  ipcMain.handle('vw:remove-chicago',(_event,id)=>removeFile(id));
