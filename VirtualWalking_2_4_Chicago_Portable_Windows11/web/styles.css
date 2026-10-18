@@ -87,3 +87,14 @@ main{padding:clamp(16px,1.8vw,32px) clamp(18px,2vw,44px)}
  object-fit:contain;
 }
 .video-wrap.desktop-video-fullscreen .video-fullscreen-btn{top:16px;right:16px;z-index:100000}
+
+/* Philips direct-play guide: clear status and large, legible rate. */
+.direct-tv-guide{flex-basis:100%;width:100%;background:#102b31;border:1px solid #45646a;border-radius:14px;padding:16px;margin-top:4px}
+.direct-tv-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.direct-tv-heading strong{font-size:17px}
+#directTvConnection{font-size:13px;color:#c4d6d9}
+.direct-tv-speed{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;padding:14px 18px;margin:14px 0;background:#0a1a20;border:1px solid #45646a;border-radius:12px}
+.direct-tv-speed small{display:block;font-size:11px;letter-spacing:1px;color:#b9ced1}
+.direct-tv-speed strong{display:block;font-size:clamp(36px,4vw,52px);line-height:1.2;color:#b7f77d;font-variant-numeric:tabular-nums}
+#directTvRateHelp{font-size:13px;color:#d1e2e4;max-width:230px}
+.direct-tv-guide .toggle{font-size:14px}
