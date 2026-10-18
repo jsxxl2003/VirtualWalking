@@ -4,7 +4,7 @@ const MACHINE_STATUS='00002ada-0000-1000-8000-00805f9b34fb';
 const $=id=>document.getElementById(id);
 let device=null, characteristic=null, speed=0, distance=null, session=null, elapsed=0, startedAt=0, timer=null, videoObjectUrl=null;
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
-let ytPlayer=null,tvSource=null,tvActive=false;
+let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false;
 let statusCharacteristic=null, zeroSince=0, movingSince=0, movingSamples=0;
 let automaticStopLock=false, manualPauseHold=false;
 const AUTO_ZERO_PAUSE_MS=2500;
@@ -181,13 +181,27 @@ $('loungePlay').addEventListener('click',async()=>{
  if(!window.vwDesktop?.loungePlay){announce('Bitte die neue Windows-EXE starten.');return;}
  btn.disabled=true;$('loungeStatus').textContent='Video wird an die YouTube-App auf dem Philips gesendet …';
  try{await window.vwDesktop.loungePlay(tvSource.youtubeId);
-  $('loungeStatus').textContent='Video-Befehl gesendet. Bitte prüfen, ob das Video auf dem Philips startet.';
+  remoteTvMode=true;manager.pause();$('video').pause();
+  $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
+  $('loungeStatus').textContent='TV-Modus aktiv: App-Player pausiert. Nur der Philips soll abspielen.';
+  updateVideoSync();
  }catch(e){$('loungeStatus').textContent='Videoübertragung fehlgeschlagen: '+e.message;}
+ finally{btn.disabled=false;}
+});
+$('loungeBackToApp').addEventListener('click',async()=>{
+ const btn=$('loungeBackToApp');btn.disabled=true;
+ try{
+  await window.vwDesktop.loungePause();
+  remoteTvMode=false;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
+  if(session?.running)manager.play();
+  $('loungeStatus').textContent='App-Modus aktiv: Pause-Befehl an Philips gesendet.';
+  updateVideoSync();
+ }catch(e){$('loungeStatus').textContent='TV konnte nicht pausiert werden: '+e.message+' – App bleibt im TV-Modus.';}
  finally{btn.disabled=false;}
 });
 $('loungeUnpair').addEventListener('click',async()=>{
  if(!window.vwDesktop?.loungeUnpair)return;
- try{await window.vwDesktop.loungeUnpair();$('loungeStatus').textContent='Kopplung gelöscht.';}
+ try{await window.vwDesktop.loungeUnpair();remoteTvMode=false;$('videoWrap').classList.remove('tv-remote');$('loungeBackToApp').hidden=true;$('loungeStatus').textContent='Kopplung gelöscht. TV-Wiedergabe gegebenenfalls direkt am Philips beenden.';}
  catch(e){$('loungeStatus').textContent='Löschen fehlgeschlagen: '+e.message;}
 });
 refreshLoungeStatus();
@@ -215,6 +229,7 @@ $('sendToTv').addEventListener('click',async()=>{
 $('closeTv').addEventListener('click',async()=>{await window.vwDesktop?.closeTv();tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
 window.vwDesktop?.onTvClosed(()=>{tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
 function videoAction(action){
+ if(remoteTvMode){manager.pause();return;}
  if(tvActive){if(action==='stop')window.vwDesktop?.sendTvState({playing:false,rate:1,time:0});else sendTvState();return;}
  if(action==='play')manager.play();
  else if(action==='pause')manager.pause();
@@ -299,7 +314,8 @@ $('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){anno
 $('video').addEventListener('error',()=>{if($('video').src)announce('Dieses Video konnte nicht abgespielt werden. Bitte direkten MP4/WebM-Link oder lokale Datei verwenden.');});
 
 // HTML5 uses smooth playback rates; YouTube uses the official player's supported steps.
-function updateVideoSync(){const enabled=$('syncEnabled').checked,video=$('video');if(!enabled){$('syncState').textContent='Aus';$('syncInfo').textContent='Synchronisation deaktiviert.';if(['html5','online','youtube'].includes(activeVideoKind))manager.setTargetRate(1);return;}
+function updateVideoSync(){if(remoteTvMode){$('syncState').textContent='TV-Modus';$('syncInfo').textContent='App-Player pausiert. TV-Geschwindigkeit noch nicht fernsteuerbar.';return;}
+ const enabled=$('syncEnabled').checked,video=$('video');if(!enabled){$('syncState').textContent='Aus';$('syncInfo').textContent='Synchronisation deaktiviert.';if(['html5','online','youtube'].includes(activeVideoKind))manager.setTargetRate(1);return;}
  if(!['html5','online','youtube'].includes(activeVideoKind)){$('syncState').textContent='Video wählen';return;}
  if(!device?.gatt?.connected){$('syncState').textContent='Warte auf FTMS';$('syncInfo').textContent='Bitte Laufband verbinden. Ohne Live-Daten keine Tempoanpassung.';return;}
  const ref=Number($('referenceSpeed').value);if(!Number.isFinite(ref)||ref<1)return;
