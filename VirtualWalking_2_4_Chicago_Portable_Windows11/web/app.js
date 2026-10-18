@@ -147,8 +147,6 @@ for(const [field,rules] of Object.entries(profileFields)){
  });
 }
 // Route discovery and favorites UI paused; existing saved favorites remain in localStorage.
-$('saveFavorite').onclick=()=>{const name=$('favoriteName').value.trim(),url=$('videoUrl').value.trim();try{const u=new URL(url);if(!['http:','https:'].includes(u.protocol))throw Error();if(!name)throw Error('Name fehlt');const existing=favorites();existing.push({id:Date.now()+':'+Math.random(),name:name.slice(0,80),url});localStorage.setItem('virtualwalking_routes',JSON.stringify(existing.slice(-60)));$('favoriteName').value='';renderLibrary();announce('Strecke als Favorit gespeichert.');}catch(e){announce('Bitte Streckenname und gültigen Video-Link eingeben.');}};
-renderLibrary();
 
 // Native Windows Chicago library: stream saved files through the local server (supports Range).
 window.virtualWalkingLoadLocalUrl=(url,name)=>{
