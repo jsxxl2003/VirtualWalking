@@ -119,6 +119,16 @@ $('launchPhilipsYoutube').addEventListener('click',async()=>{
  catch(e){status.textContent='TV-Starttest fehlgeschlagen: '+e.message;}
  finally{button.disabled=false;}
 });
+$('checkPhilipsCast').addEventListener('click',async()=>{
+ const button=$('checkPhilipsCast'),status=$('philipsCastStatus');
+ if(!window.vwDesktop?.checkPhilipsCast){status.textContent='Dieser Test ist nur in der Windows-EXE verfügbar.';return;}
+ button.disabled=true;status.textContent='Prüfe Google-Cast-Verbindung zu Philips 192.168.0.27 …';
+ try{
+  const result=await window.vwDesktop.checkPhilipsCast();
+  status.textContent=result.message;
+ }catch(e){status.textContent='Kompatibilitätsprüfung fehlgeschlagen: '+e.message;}
+ finally{button.disabled=false;}
+});
 $('checkPhilipsDial').addEventListener('click',async()=>{
  const button=$('checkPhilipsDial'),status=$('philipsDialStatus');
  if(!window.vwDesktop?.checkPhilipsDial){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
