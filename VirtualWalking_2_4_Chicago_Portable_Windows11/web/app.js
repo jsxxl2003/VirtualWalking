@@ -100,6 +100,17 @@ $('directTvConnected').addEventListener('change',()=>{
  updateDirectTvHint();
 });
 $('directTvVoice').addEventListener('change',()=>{lastTvSpokenRate=null;if(!$('directTvVoice').checked&&'speechSynthesis' in window)window.speechSynthesis.cancel();});
+$('sendYoutubeToPhilips').addEventListener('click',async()=>{
+ const button=$('sendYoutubeToPhilips'),status=$('philipsDialStatus');
+ if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
+  status.textContent='Bitte zuerst ein YouTube-Laufvideo auswählen.';return;
+ }
+ if(!window.vwDesktop?.sendYoutubeToPhilips){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
+ button.disabled=true;status.textContent='Sende ausgewähltes Video direkt an Philips 192.168.0.27 (DIAL-Test) …';
+ try{const result=await window.vwDesktop.sendYoutubeToPhilips(tvSource.youtubeId);status.textContent=result.message;}
+ catch(e){status.textContent='Direkte Übertragung fehlgeschlagen: '+e.message;}
+ finally{button.disabled=false;}
+});
 $('launchPhilipsYoutube').addEventListener('click',async()=>{
  const button=$('launchPhilipsYoutube'),status=$('philipsDialStatus');
  if(!window.vwDesktop?.launchPhilipsYoutube){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
