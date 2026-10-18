@@ -113,7 +113,7 @@ function discoverTvReceivers(){
    const ip=rinfo.address;
    if(!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip))return;
    const kind=/dial/i.test(st+usn)?'DIAL / YouTube':/googlecast|chromecast/i.test(st+usn)?'Google Cast':'Medienempfänger';
-   found.set(ip+kind,{ip,kind,description:server.slice(0,100)});
+   found.set(ip+kind,{ip,kind,description:server.slice(0,100),location:String(header.location||'').slice(0,300)});
   });
   socket.bind(0,'0.0.0.0',()=>{
    const targets=['urn:dial-multiscreen-org:service:dial:1','urn:dial-multiscreen-org:device:dial:1','urn:schemas-upnp-org:device:MediaRenderer:1'];
@@ -123,6 +123,37 @@ function discoverTvReceivers(){
    }
   });
  });
+}
+// Read-only DIAL compatibility check. No TV application is launched here.
+function tvHttpGet(url,expectedIp){
+ return new Promise((resolve,reject)=>{
+  let u;try{u=new URL(url);}catch{return reject(Error('Ungültige TV-Adresse'));}
+  if(u.protocol!=='http:'||u.hostname!==expectedIp||!['80','8008','8009',''].includes(u.port))return reject(Error('TV-Adresse oder Port nicht freigegeben'));
+  const req=http.get(u,{timeout:3000,headers:{'User-Agent':'VirtualWalking/2.4'}},res=>{
+   let body='',size=0;
+   res.on('data',chunk=>{size+=chunk.length;if(size>65536){req.destroy(Error('TV-Antwort zu groß'));return;}body+=chunk.toString('utf8');});
+   res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body}));
+  });
+  req.on('timeout',()=>req.destroy(Error('TV antwortet nicht rechtzeitig')));
+  req.on('error',reject);
+ });
+}
+async function checkPhilipsDial(){
+ const target='192.168.0.27';
+ const devices=await discoverTvReceivers();
+ const entry=devices.find(d=>d.ip===target&&d.kind==='DIAL / YouTube'&&d.location);
+ if(!entry)return {ok:false,message:'Philips unter 192.168.0.27 derzeit nicht als DIAL-Empfänger gefunden. IP-Adresse und Netzwerk prüfen.'};
+ try{
+  const description=await tvHttpGet(entry.location,target);
+  const applicationUrl=String(description.headers['application-url']||'');
+  if(!applicationUrl)return {ok:false,message:'Philips antwortet, liefert aber keine DIAL-App-Adresse.',status:description.status};
+  const base=new URL(applicationUrl);
+  if(base.protocol!=='http:'||base.hostname!==target)return {ok:false,message:'DIAL-App-Adresse weicht vom bestätigten Fernseher ab.'};
+  const url=applicationUrl.replace(/\/+$/,'')+'/YouTube';
+  const app=await tvHttpGet(url,target);
+  const state=/<state>\s*([^<]+)\s*<\/state>/i.exec(app.body)?.[1]||'unbekannt';
+  return {ok:app.status===200,status:app.status,state,message:app.status===200?'YouTube-DIAL-Schnittstelle antwortet. App-Start und Videowiedergabe noch nicht getestet.':'YouTube-DIAL-Schnittstelle meldet HTTP '+app.status+'.'};
+ }catch(e){return {ok:false,message:'DIAL-Verbindungstest: '+e.message};}
 }
 function tvDisplay(){
  const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
@@ -151,6 +182,7 @@ app.whenReady().then(async()=>{
   return win.isFullScreen();
  });
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
+ ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:tv-open',async()=>openTv());
  ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
  ipcMain.handle('vw:tv-load',async(_event,data)=>{
