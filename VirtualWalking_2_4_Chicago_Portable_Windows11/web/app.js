@@ -4,7 +4,18 @@ const MACHINE_STATUS='00002ada-0000-1000-8000-00805f9b34fb';
 const $=id=>document.getElementById(id);
 let device=null, characteristic=null, speed=0, distance=null, session=null, elapsed=0, startedAt=0, timer=null, videoObjectUrl=null;
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
-let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false;
+let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false,remoteTvPlaying=false;
+let remoteTvQueue=Promise.resolve();
+function remoteTvSetPlaying(playing){
+ if(!remoteTvMode||remoteTvPlaying===playing)return;
+ remoteTvPlaying=playing;
+ remoteTvQueue=remoteTvQueue.catch(()=>{}).then(async()=>{
+  if(!remoteTvMode)return;
+  try{await (playing?window.vwDesktop.loungeResume():window.vwDesktop.loungePause());
+   $('loungeStatus').textContent=playing?'Philips: Wiedergabe fortgesetzt.':'Philips: Pause-Befehl gesendet.';
+  }catch(e){remoteTvPlaying=!playing;$('loungeStatus').textContent='Philips-Steuerung fehlgeschlagen: '+e.message;}
+ });
+}
 let statusCharacteristic=null, zeroSince=0, movingSince=0, movingSamples=0;
 let automaticStopLock=false, manualPauseHold=false;
 const AUTO_ZERO_PAUSE_MS=2500;
@@ -181,7 +192,7 @@ $('loungePlay').addEventListener('click',async()=>{
  if(!window.vwDesktop?.loungePlay){announce('Bitte die neue Windows-EXE starten.');return;}
  btn.disabled=true;$('loungeStatus').textContent='Video wird an die YouTube-App auf dem Philips gesendet …';
  try{await window.vwDesktop.loungePlay(tvSource.youtubeId);
-  remoteTvMode=true;manager.pause();$('video').pause();
+  remoteTvMode=true;remoteTvPlaying=true;manager.pause();$('video').pause();
   $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
   $('loungeStatus').textContent='TV-Modus aktiv: App-Player pausiert. Nur der Philips soll abspielen.';
   updateVideoSync();
@@ -192,7 +203,7 @@ $('loungeBackToApp').addEventListener('click',async()=>{
  const btn=$('loungeBackToApp');btn.disabled=true;
  try{
   await window.vwDesktop.loungePause();
-  remoteTvMode=false;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
+  remoteTvMode=false;remoteTvPlaying=false;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
   if(session?.running)manager.play();
   $('loungeStatus').textContent='App-Modus aktiv: Pause-Befehl an Philips gesendet.';
   updateVideoSync();
@@ -201,7 +212,7 @@ $('loungeBackToApp').addEventListener('click',async()=>{
 });
 $('loungeUnpair').addEventListener('click',async()=>{
  if(!window.vwDesktop?.loungeUnpair)return;
- try{await window.vwDesktop.loungeUnpair();remoteTvMode=false;$('videoWrap').classList.remove('tv-remote');$('loungeBackToApp').hidden=true;$('loungeStatus').textContent='Kopplung gelöscht. TV-Wiedergabe gegebenenfalls direkt am Philips beenden.';}
+ try{await window.vwDesktop.loungeUnpair();remoteTvMode=false;remoteTvPlaying=false;$('videoWrap').classList.remove('tv-remote');$('loungeBackToApp').hidden=true;$('loungeStatus').textContent='Kopplung gelöscht. TV-Wiedergabe gegebenenfalls direkt am Philips beenden.';}
  catch(e){$('loungeStatus').textContent='Löschen fehlgeschlagen: '+e.message;}
 });
 refreshLoungeStatus();
@@ -229,7 +240,7 @@ $('sendToTv').addEventListener('click',async()=>{
 $('closeTv').addEventListener('click',async()=>{await window.vwDesktop?.closeTv();tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
 window.vwDesktop?.onTvClosed(()=>{tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
 function videoAction(action){
- if(remoteTvMode){manager.pause();return;}
+ if(remoteTvMode){manager.pause();remoteTvSetPlaying(action==='play');return;}
  if(tvActive){if(action==='stop')window.vwDesktop?.sendTvState({playing:false,rate:1,time:0});else sendTvState();return;}
  if(action==='play')manager.play();
  else if(action==='pause')manager.pause();
