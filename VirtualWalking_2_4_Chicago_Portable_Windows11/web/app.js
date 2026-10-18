@@ -96,6 +96,20 @@ function renderHistory(){const hist=history();$('history').replaceChildren();if(
 renderHistory();
 $('clear').onclick=()=>{if(confirm('Alle lokal gespeicherten Trainingseinheiten löschen?')){localStorage.removeItem('virtualwalking_history');renderHistory();announce('Trainingshistorie gelöscht.');}};
 $('export').onclick=()=>{const data=history(), rows=['Datum;Dauer_Sekunden;Strecke_km;Durchschnitt_kmh;Kalorien_geschaetzt;Quelle;Strecke_Name',...data.map(h=>[h.date,h.duration,String(h.km).replace('.',','),h.averageSpeed==null?'':String(h.averageSpeed).replace('.',','),h.calories??'',h.source, String(h.route||'').replaceAll(';',',').replaceAll('\n',' ')].join(';'))];const file=new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download='VirtualWalking_Trainingshistorie.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+// Fullscreen is initiated by an explicit user click so browsers permit the request.
+const fullscreenSurface=$('videoWrap'),fullscreenButton=$('videoFullscreen');
+fullscreenButton.addEventListener('click',async()=>{
+ try{
+  if(document.fullscreenElement){await document.exitFullscreen();}
+  else if(fullscreenSurface.requestFullscreen){await fullscreenSurface.requestFullscreen();}
+  else announce('Vollbild wird von diesem Fenster nicht unterstützt.');
+ }catch(e){announce('Vollbild konnte nicht aktiviert werden: '+e.message);}
+});
+document.addEventListener('fullscreenchange',()=>{
+ const active=document.fullscreenElement===fullscreenSurface;
+ fullscreenButton.textContent=active?'⛶ Vollbild beenden':'⛶ Vollbild';
+ fullscreenButton.setAttribute('aria-label',active?'Vollbild beenden':'Video im Vollbild anzeigen');
+});
 function videoReset(){manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
 function loadFile(file){if(!file)return;videoReset();videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
 $('fileInput').onchange=e=>loadFile(e.target.files[0]);
