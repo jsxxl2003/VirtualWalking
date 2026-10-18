@@ -100,6 +100,14 @@ $('directTvConnected').addEventListener('change',()=>{
  updateDirectTvHint();
 });
 $('directTvVoice').addEventListener('change',()=>{lastTvSpokenRate=null;if(!$('directTvVoice').checked&&'speechSynthesis' in window)window.speechSynthesis.cancel();});
+$('checkPhilipsDial').addEventListener('click',async()=>{
+ const button=$('checkPhilipsDial'),status=$('philipsDialStatus');
+ if(!window.vwDesktop?.checkPhilipsDial){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
+ button.disabled=true;status.textContent='Prüfe DIAL-/YouTube-Schnittstelle des Philips …';
+ try{const result=await window.vwDesktop.checkPhilipsDial();status.textContent=result.message+(result.state?' (App-Status: '+result.state+')':'');}
+ catch(e){status.textContent='Verbindungstest fehlgeschlagen: '+e.message;}
+ finally{button.disabled=false;}
+});
 $('discoverTv').addEventListener('click',async()=>{
  const button=$('discoverTv'),status=$('tvDiscoveryStatus'),results=$('tvDiscoveryResults');
  if(!window.vwDesktop?.discoverTv){status.textContent='Die Suche funktioniert nur in der Windows-EXE.';return;}
