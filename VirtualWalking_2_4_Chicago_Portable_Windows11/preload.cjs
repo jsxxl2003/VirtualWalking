@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('vwDesktop',{
  discoverTv:()=>ipcRenderer.invoke('vw:discover-tv'),
  checkPhilipsDial:()=>ipcRenderer.invoke('vw:check-philips-dial'),
  launchPhilipsYoutube:()=>ipcRenderer.invoke('vw:launch-philips-youtube'),
+ sendYoutubeToPhilips:id=>ipcRenderer.invoke('vw:send-youtube-to-philips',id),
  openTv:()=>ipcRenderer.invoke('vw:tv-open'),
  closeTv:()=>ipcRenderer.invoke('vw:tv-close'),
  loadTv:data=>ipcRenderer.invoke('vw:tv-load',data),
