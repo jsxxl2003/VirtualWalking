@@ -27,3 +27,35 @@
 @media(max-width:520px){.profile-grid{grid-template-columns:1fr}}
 
 .tv-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0 16px}.tv-actions button:first-child{border-color:var(--green);color:var(--green)}.tv-actions .mini{margin:0}
+
+/* Wide-screen layout and accessible personal-data inputs (October 2026). */
+.top,main{width:100%;max-width:none}
+.top{padding-inline:clamp(18px,2vw,44px)}
+main{padding:clamp(16px,1.8vw,32px) clamp(18px,2vw,44px)}
+.layout{grid-template-columns:minmax(0,1.5fr) minmax(420px,1fr);gap:clamp(16px,1.5vw,28px);align-items:start}
+.stats-card,.player-card{min-width:0}
+.profile-settings.calorie-setting{
+ display:block;
+ width:100%;
+ margin:20px 0;
+ padding:20px;
+ color:var(--text);
+ font-size:15px;
+}
+.profile-settings h3{font-size:20px;line-height:1.35;margin:0 0 8px}
+.profile-settings>p.mini{font-size:13px;line-height:1.55;margin:8px 0 12px}
+.profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+.profile-grid label{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;min-width:0;font-size:15px;font-weight:600;line-height:1.4;color:var(--text);overflow-wrap:break-word}
+.profile-grid input,.profile-grid select{display:block;width:100%;height:52px;min-width:0;padding:10px 14px;font-size:18px;line-height:1.3;color:#fff;background:#091a20;border:1px solid #52717a;border-radius:10px}
+.profile-grid input:focus-visible,.profile-grid select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.profile-grid input::placeholder{color:#b1c2c8;opacity:1}
+.profile-settings #profileStatus{margin-top:16px;font-size:13px}
+@media(max-width:1050px){
+ .layout{grid-template-columns:1fr}
+ .profile-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){
+ .profile-settings.calorie-setting{padding:16px}
+ .profile-grid{grid-template-columns:1fr}
+ .profile-grid input,.profile-grid select{font-size:18px}
+}
