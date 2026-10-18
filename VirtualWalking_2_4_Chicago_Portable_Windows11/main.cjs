@@ -327,11 +327,12 @@ async function loungeCommand(command,videoId){
  const ids=loungeSessionIds(init);
  if(!ids.sid||!ids.gsessionid)throw Error('YouTube-Sitzung konnte nicht geöffnet werden. Bitte YouTube auf dem TV starten.');
  await loungePost('/api/lounge/bc/bind',{...base,RID:2,SID:ids.sid,gsessionid:ids.gsessionid},
-  command==='setPlaylist'?{count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId}:{count:1,req0__sc:'pause'});
+  command==='setPlaylist'?{count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId}:{count:1,req0__sc:command});
  return {sent:true};
 }
 async function loungePlay(videoId){return loungeCommand('setPlaylist',videoId);}
 async function loungePause(){return loungeCommand('pause');}
+async function loungeResume(){return loungeCommand('play');}
 async function loungeUnpair(){
  loungeState.screenId=null;loungeState.token=null;loungeState.expires=0;
  try{await fsp.unlink(loungeFile());}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -371,6 +372,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:lounge-pair',(_event,code)=>loungePair(code));
  ipcMain.handle('vw:lounge-play',(_event,id)=>loungePlay(id));
  ipcMain.handle('vw:lounge-pause',()=>loungePause());
+ ipcMain.handle('vw:lounge-resume',()=>loungeResume());
  ipcMain.handle('vw:lounge-unpair',()=>loungeUnpair());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:check-philips-cast',()=>checkPhilipsCast());
