@@ -155,6 +155,38 @@ async function checkPhilipsDial(){
   return {ok:app.status===200,status:app.status,state,message:app.status===200?'YouTube-DIAL-Schnittstelle antwortet. App-Start und Videowiedergabe noch nicht getestet.':'YouTube-DIAL-Schnittstelle meldet HTTP '+app.status+'.'};
  }catch(e){return {ok:false,message:'DIAL-Verbindungstest: '+e.message};}
 }
+// User-triggered DIAL POST: starts only the YouTube app on the confirmed Philips.
+// It does not cast a video or control playback speed.
+function tvHttpPost(url,expectedIp){
+ return new Promise((resolve,reject)=>{
+  let u;try{u=new URL(url);}catch{return reject(Error('Ungültige TV-Adresse'));}
+  if(u.protocol!=='http:'||u.hostname!==expectedIp||u.username||u.password)return reject(Error('TV-Adresse nicht freigegeben'));
+  const req=http.request(u,{method:'POST',timeout:4000,headers:{'User-Agent':'VirtualWalking/2.4','Content-Length':'0'}},res=>{
+   let body='',size=0;
+   res.on('data',chunk=>{size+=chunk.length;if(size>8192){req.destroy(Error('TV-Antwort zu groß'));return;}body+=chunk.toString('utf8');});
+   res.on('end',()=>resolve({status:res.statusCode,body}));
+  });
+  req.on('timeout',()=>req.destroy(Error('TV antwortet nicht rechtzeitig')));
+  req.on('error',reject);req.end();
+ });
+}
+async function launchPhilipsYoutube(){
+ const target='192.168.0.27';
+ const devices=await discoverTvReceivers();
+ const entry=devices.find(d=>d.ip===target&&d.kind==='DIAL / YouTube'&&d.location);
+ if(!entry)return {ok:false,message:'Philips unter 192.168.0.27 nicht gefunden. Bitte zuerst Geräteerkennung prüfen.'};
+ try{
+  const description=await tvHttpGet(entry.location,target);
+  const applicationUrl=String(description.headers['application-url']||'');
+  if(!applicationUrl)return {ok:false,message:'Keine DIAL-App-Adresse vom Fernseher erhalten.'};
+  const base=new URL(applicationUrl);
+  if(base.protocol!=='http:'||base.hostname!==target||base.username||base.password)return {ok:false,message:'DIAL-Adresse gehört nicht zum bestätigten Philips.'};
+  const url=applicationUrl.replace(/\/+$/,'')+'/YouTube';
+  const response=await tvHttpPost(url,target);
+  const accepted=[200,201,202,204].includes(response.status);
+  return {ok:accepted,status:response.status,message:accepted?'Philips hat den YouTube-Startbefehl angenommen (HTTP '+response.status+'). Bitte prüfen, ob YouTube auf dem TV erscheint. Noch kein Video übertragen.':'Philips hat den Startbefehl nicht angenommen (HTTP '+response.status+').'};
+ }catch(e){return {ok:false,message:'YouTube-Start fehlgeschlagen: '+e.message};}
+}
 function tvDisplay(){
  const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
  return all.find(d=>d.id!==primary.id)||null;
@@ -183,6 +215,7 @@ app.whenReady().then(async()=>{
  });
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
+ ipcMain.handle('vw:launch-philips-youtube',()=>launchPhilipsYoutube());
  ipcMain.handle('vw:tv-open',async()=>openTv());
  ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
  ipcMain.handle('vw:tv-load',async(_event,data)=>{
