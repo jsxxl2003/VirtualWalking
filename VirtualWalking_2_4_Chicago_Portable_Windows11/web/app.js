@@ -1,9 +1,50 @@
 'use strict';
 const FTMS='00001826-0000-1000-8000-00805f9b34fb', DATA='00002acd-0000-1000-8000-00805f9b34fb';
+const MACHINE_STATUS='00002ada-0000-1000-8000-00805f9b34fb';
 const $=id=>document.getElementById(id);
 let device=null, characteristic=null, speed=0, distance=null, session=null, elapsed=0, startedAt=0, timer=null, videoObjectUrl=null;
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
 let ytPlayer=null;
+let statusCharacteristic=null, zeroSince=0, movingSince=0, movingSamples=0;
+let automaticStopLock=false, manualPauseHold=false;
+const AUTO_ZERO_PAUSE_MS=2500;
+function clearMotionCounters(){zeroSince=0;movingSince=0;movingSamples=0;}
+function onMachineStatus(event){
+ const v=event.target.value;
+ if(!v||v.byteLength<1)return;
+ const op=v.getUint8(0);
+ // FTMS Fitness Machine Status: 0x02 stop/pause by user, 0x03 safety stop,
+ // 0x04 started/resumed by user. No motor-control commands are sent.
+ if(op===0x02&&v.byteLength>=2){
+  const reason=v.getUint8(1);
+  if(reason===0x01){automaticStopLock=true;manualPauseHold=false;speed=0;clearMotionCounters();if(session)stop();announce('Laufband per Fernbedienung beendet – Training gespeichert.');ui();}
+  else if(reason===0x02){manualPauseHold=false;speed=0;clearMotionCounters();if(session?.running)pause(true);announce('Laufband per Fernbedienung pausiert.');ui();}
+ }else if(op===0x03){
+  automaticStopLock=true;manualPauseHold=false;speed=0;clearMotionCounters();if(session)stop();announce('Sicherheitsstopp erkannt – Training gespeichert.');ui();
+ }else if(op===0x04){
+  automaticStopLock=false;manualPauseHold=false;clearMotionCounters();if(!session?.running)begin(true);announce('Laufband gestartet – Training läuft.');ui();
+ }
+}
+function followTreadmillMotion(){
+ if(!device?.gatt?.connected)return;
+ const now=Date.now();
+ if(speed>=0.2){
+  zeroSince=0;
+  if(automaticStopLock||manualPauseHold)return;
+  if(!movingSince)movingSince=now;
+  movingSamples++;
+  if(!session?.running&&movingSamples>=2&&now-movingSince>=250)begin(true);
+ }else if(speed<0.1){
+  movingSince=0;movingSamples=0;
+  if(!zeroSince)zeroSince=now;
+  if(automaticStopLock)automaticStopLock=false;
+  if(manualPauseHold)manualPauseHold=false;
+  if(session?.running&&now-zeroSince>=AUTO_ZERO_PAUSE_MS){
+   pause(true);announce('Laufband steht – Training und Video pausiert.');
+  }
+ }
+}
+
 const manager=new VirtualWalkingVideoManager({
  video:$('video'),
  onStatus:status=>{$('videoHealth').textContent=status;},
@@ -31,16 +72,25 @@ if(!(flags&1)) nextSpeed=view.getUint16(take(2),true)/100;
 if(flags&2)take(2); // average speed
 if(flags&4){let off=take(3); nextDistance=(view.getUint8(off)|(view.getUint8(off+1)<<8)|(view.getUint8(off+2)<<16))/1000;}
 return {speed:nextSpeed,distance:nextDistance,flags};}
-function onData(event){try{const now=performance.now();const d=parseTreadmillData(event.target.value);if(d.speed!==null)speed=d.speed;if(d.distance!==null)distance=d.distance;if(session?.running){const dt=lastTelemetry?Math.max(0,Math.min(5,(now-lastTelemetry)/1000)):0;session.sumKmhSeconds+=Math.max(0,speed)*dt;session.estimatedKm+=Math.max(0,speed)*dt/3600;}lastTelemetry=now;ui();}catch(err){announce('FTMS-Paket konnte nicht gelesen werden: '+err.message);}}
-function disconnected(){device=null;characteristic=null;speed=0;lastTelemetry=0;$('dot').classList.remove('active');$('connectionStatus').textContent='Nicht verbunden';$('connectionHint').textContent='WELLFIT TM Linker';$('connect').disabled=false;$('disconnect').disabled=true;$('sourceBadge').textContent='Keine Live-Verbindung';announce('Bluetooth-Verbindung getrennt.');ui();}
-async function connect(){if(!navigator.bluetooth){announce('Web Bluetooth ist hier nicht verfügbar. Verwende Chrome/Edge über http://localhost:8765.');return;}try{$('connect').disabled=true;announce('Warte auf die Auswahl des Laufbands …');device=await navigator.bluetooth.requestDevice({filters:[{services:[FTMS]}],optionalServices:[FTMS]});device.addEventListener('gattserverdisconnected',disconnected);const server=await device.gatt.connect();const service=await server.getPrimaryService(FTMS);characteristic=await service.getCharacteristic(DATA);await characteristic.startNotifications();characteristic.addEventListener('characteristicvaluechanged',onData);$('dot').classList.add('active');$('connectionStatus').textContent='Verbunden';$('connectionHint').textContent=device.name||'FTMS-Laufband';$('disconnect').disabled=false;$('sourceBadge').textContent='FTMS Live';announce('WELLFIT/FTMS verbunden. Laufband nur am Gerät bedienen.');}catch(e){$('connect').disabled=false;announce(e.name==='NotFoundError'?'Geräteauswahl abgebrochen oder kein FTMS-Gerät gefunden.':'Bluetooth-Fehler: '+e.message);if(device&&!device.gatt?.connected)disconnected();}}
+function onData(event){try{const now=performance.now();const d=parseTreadmillData(event.target.value);if(d.speed!==null)speed=d.speed;if(d.distance!==null)distance=d.distance;if(session?.running){const dt=lastTelemetry?Math.max(0,Math.min(5,(now-lastTelemetry)/1000)):0;session.sumKmhSeconds+=Math.max(0,speed)*dt;session.estimatedKm+=Math.max(0,speed)*dt/3600;}lastTelemetry=now;followTreadmillMotion();ui();}catch(err){announce('FTMS-Paket konnte nicht gelesen werden: '+err.message);}}
+function disconnected(){if(session?.running){pause(true);announce('Bluetooth getrennt – Training und Video vorsorglich pausiert.');}device=null;characteristic=null;statusCharacteristic=null;speed=0;lastTelemetry=0;clearMotionCounters();automaticStopLock=false;manualPauseHold=false;$('dot').classList.remove('active');$('connectionStatus').textContent='Nicht verbunden';$('connectionHint').textContent='WELLFIT TM Linker';$('connect').disabled=false;$('disconnect').disabled=true;$('sourceBadge').textContent='Keine Live-Verbindung';announce('Bluetooth-Verbindung getrennt.');ui();}
+async function connect(){if(!navigator.bluetooth){announce('Web Bluetooth ist hier nicht verfügbar. Verwende Chrome/Edge über http://localhost:8765.');return;}try{$('connect').disabled=true;announce('Warte auf die Auswahl des Laufbands …');device=await navigator.bluetooth.requestDevice({filters:[{services:[FTMS]}],optionalServices:[FTMS]});device.addEventListener('gattserverdisconnected',disconnected);const server=await device.gatt.connect();const service=await server.getPrimaryService(FTMS);characteristic=await service.getCharacteristic(DATA);await characteristic.startNotifications();characteristic.addEventListener('characteristicvaluechanged',onData);
+ // Optional: FTMS status events distinguish remote pause from remote stop.
+ try{
+  statusCharacteristic=await service.getCharacteristic(MACHINE_STATUS);
+  statusCharacteristic.addEventListener('characteristicvaluechanged',onMachineStatus);
+  await statusCharacteristic.startNotifications();
+ }catch(e){statusCharacteristic=null;console.info('FTMS-Maschinenstatus nicht verfügbar; Stillstand wird als Pause erkannt.',e);}
+ clearMotionCounters();automaticStopLock=false;manualPauseHold=false;
+ $('dot').classList.add('active');$('connectionStatus').textContent='Verbunden';$('connectionHint').textContent=device.name||'FTMS-Laufband';$('disconnect').disabled=false;$('sourceBadge').textContent='FTMS Live';announce('WELLFIT/FTMS verbunden. Laufband nur am Gerät bedienen.');}catch(e){$('connect').disabled=false;announce(e.name==='NotFoundError'?'Geräteauswahl abgebrochen oder kein FTMS-Gerät gefunden.':'Bluetooth-Fehler: '+e.message);if(device&&!device.gatt?.connected)disconnected();}}
 $('connect').onclick=connect;$('disconnect').onclick=()=>{if(device?.gatt?.connected)device.gatt.disconnect();else disconnected();};
 $('bleHint').textContent=navigator.bluetooth?'Bluetooth ist verfügbar. Chrome/Edge benötigt localhost oder HTTPS.':'Web Bluetooth nicht verfügbar – öffne die App in Chrome oder Edge über den lokalen Starter.';
-function begin(){if(!device?.gatt?.connected){if(!confirm('Kein Laufband verbunden. Die Aufzeichnung kann ohne Live-Daten keine echte Strecke erfassen. Trotzdem starten?'))return;}
+function begin(fromTreadmill=false){if(!fromTreadmill&&!device?.gatt?.connected){if(!confirm('Kein Laufband verbunden. Die Aufzeichnung kann ohne Live-Daten keine echte Strecke erfassen. Trotzdem starten?'))return;}
+ if(!fromTreadmill){manualPauseHold=false;automaticStopLock=false;} if(session?.running)return;
  if(session){session.running=true;startedAt=Date.now();lastTelemetry=0;}else{session={started:new Date().toISOString(),startDistance:distance,running:true,estimatedKm:0,sumKmhSeconds:0};elapsed=0;startedAt=Date.now();lastTelemetry=0;}videoAction('play');announce('Trainingsaufzeichnung läuft.');ui();}
-function pause(){if(!session?.running)return;elapsed+=(Date.now()-startedAt)/1000;session.running=false;lastTelemetry=0;videoAction('pause');announce('Aufzeichnung pausiert. Das Laufband läuft gegebenenfalls weiter!');ui();}
-function stop(){if(!session)return;if(session.running)pause();const secs=Math.round(elapsed),km=Number(Math.max(0,workoutKm()).toFixed(3));const item={date:session.started,duration:secs,km,averageSpeed:Number((secs?session.sumKmhSeconds/secs:0).toFixed(2)),calories:caloriesFor(session,secs),route:$('videoTitle').textContent,source:device?.gatt?.connected?'FTMS':'Ohne Gerät'};const arr=history();arr.unshift(item);try{localStorage.setItem('virtualwalking_history',JSON.stringify(arr.slice(0,500)));}catch(e){announce('Speicherung fehlgeschlagen: '+e.message);}videoAction('stop');session=null;elapsed=0;renderHistory();announce('Training gespeichert.');ui();}
-$('start').onclick=begin;$('pause').onclick=pause;$('stop').onclick=stop;timer=setInterval(ui,500);ui();
+function pause(fromTreadmill=false){if(!session?.running)return;if(!fromTreadmill&&speed>=0.2)manualPauseHold=true;elapsed+=(Date.now()-startedAt)/1000;session.running=false;lastTelemetry=0;videoAction('pause');announce('Aufzeichnung pausiert. Das Laufband läuft gegebenenfalls weiter!');ui();}
+function stop(){if(!session)return;if(session.running)pause(true);const secs=Math.round(elapsed),km=Number(Math.max(0,workoutKm()).toFixed(3));const item={date:session.started,duration:secs,km,averageSpeed:Number((secs?session.sumKmhSeconds/secs:0).toFixed(2)),calories:caloriesFor(session,secs),route:$('videoTitle').textContent,source:device?.gatt?.connected?'FTMS':'Ohne Gerät'};const arr=history();arr.unshift(item);try{localStorage.setItem('virtualwalking_history',JSON.stringify(arr.slice(0,500)));}catch(e){announce('Speicherung fehlgeschlagen: '+e.message);}videoAction('stop');session=null;elapsed=0;renderHistory();announce('Training gespeichert.');ui();}
+$('start').onclick=()=>begin();$('pause').onclick=()=>pause();$('stop').onclick=()=>{automaticStopLock=true;stop();};timer=setInterval(()=>{followTreadmillMotion();ui();},500);ui();
 function history(){try{return JSON.parse(localStorage.getItem('virtualwalking_history')||'[]')}catch{return []}}
 function renderHistory(){const hist=history();$('history').replaceChildren();if(!hist.length){const t=document.createElement('small');t.textContent='Noch keine abgeschlossenen Einheiten.';$('history').append(t);}for(let h of hist.slice(0,20)){const e=document.createElement('div');e.className='history-item';const a=document.createElement('b');a.textContent=`${Number(h.km||0).toFixed(2).replace('.',',')} km · ${formatTime(h.duration||0)}`;const b=document.createElement('small');b.textContent=`${new Date(h.date).toLocaleString('de-DE')} · Ø ${h.averageSpeed==null?'—':Number(h.averageSpeed).toFixed(1)+' km/h'} · ${h.calories==null?'—':h.calories+' kcal'} · ${h.route||h.source}`;e.append(a,b);$('history').append(e);}const now=new Date(),weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);const monthStart=new Date(now.getFullYear(),now.getMonth(),1);$('summary').replaceChildren();for(const [title,from] of [['Diese Woche',weekStart],['Dieser Monat',monthStart]]){const records=hist.filter(h=>new Date(h.date)>=from);const div=document.createElement('div');div.className='summary-item';const label=document.createElement('small');label.textContent=title;const value=document.createElement('b');value.textContent=`${fmt(records.reduce((n,h)=>n+Number(h.km||0),0))} km`;const sub=document.createElement('small');sub.textContent=`${records.length} Einheiten · ${formatTime(records.reduce((n,h)=>n+Number(h.duration||0),0))}`;div.append(label,value,sub);$('summary').append(div);}}
 renderHistory();
