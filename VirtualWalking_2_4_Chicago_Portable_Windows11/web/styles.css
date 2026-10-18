@@ -59,3 +59,31 @@ main{padding:clamp(16px,1.8vw,32px) clamp(18px,2vw,44px)}
  .profile-grid{grid-template-columns:1fr}
  .profile-grid input,.profile-grid select{font-size:18px}
 }
+
+/* Native Windows fullscreen: video only, no training dashboard overlay. */
+.video-wrap.desktop-video-fullscreen{
+ position:fixed!important;
+ inset:0!important;
+ z-index:99999!important;
+ width:100vw!important;
+ height:100vh!important;
+ max-width:none!important;
+ max-height:none!important;
+ aspect-ratio:auto!important;
+ margin:0!important;
+ padding:0!important;
+ border:0!important;
+ border-radius:0!important;
+ background:#000!important;
+ display:flex!important;
+ align-items:center;
+ justify-content:center;
+}
+.video-wrap.desktop-video-fullscreen video,
+.video-wrap.desktop-video-fullscreen .youtube,
+.video-wrap.desktop-video-fullscreen .youtube iframe{
+ width:100%!important;
+ height:100%!important;
+ object-fit:contain;
+}
+.video-wrap.desktop-video-fullscreen .video-fullscreen-btn{top:16px;right:16px;z-index:100000}
