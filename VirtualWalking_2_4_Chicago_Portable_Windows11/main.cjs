@@ -36,6 +36,29 @@ async function writeProfile(data){
  await fsp.rename(temp,file);
  return clean;
 }
+function lastVideoFile(){return path.join(app.getPath('userData'),'last-video.json');}
+function validLastVideo(data){
+ if(!data||typeof data!=='object')return null;
+ const url=String(data.url||'');
+ if(url.length>2048)return null;
+ try{
+  const u=new URL(url);
+  if(!['https:','http:'].includes(u.protocol))return null;
+  const name=String(data.name||'Zuletzt verwendetes Video').slice(0,120);
+  return {url:u.toString(),name};
+ }catch{return null;}
+}
+async function readLastVideo(){
+ try{return validLastVideo(JSON.parse(await fsp.readFile(lastVideoFile(),'utf8')));}
+ catch(e){if(e.code==='ENOENT')return null;throw e;}
+}
+async function writeLastVideo(data){
+ const clean=validLastVideo(data);
+ if(!clean)throw Error('Ungültige Video-Adresse.');
+ const file=lastVideoFile();await fsp.mkdir(path.dirname(file),{recursive:true});
+ const tmp=file+'.tmp';await fsp.writeFile(tmp,JSON.stringify(clean,null,2),'utf8');
+ await fsp.rename(tmp,file);return clean;
+}
 async function ensureDir(){await fsp.mkdir(libraryDir(),{recursive:true});}
 async function list(){await ensureDir();let entries=[];try{entries=JSON.parse(await fsp.readFile(path.join(libraryDir(),'library.json'),'utf8'));}catch{}
  if(!Array.isArray(entries))return [];return entries.filter(x=>x&&typeof x.id==='string'&&/^[0-9a-f-]{36}$/.test(x.id)&&supported[x.ext]);}
@@ -373,6 +396,8 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:read-profile',()=>readProfile());
  ipcMain.handle('vw:write-profile',(_event,data)=>writeProfile(data));
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
+ ipcMain.handle('vw:last-video-read',()=>readLastVideo());
+ ipcMain.handle('vw:last-video-write',(_event,data)=>writeLastVideo(data));
  ipcMain.handle('vw:lounge-status',async()=>({paired:!!(await loungeRead()).screenId}));
  ipcMain.handle('vw:lounge-pair',(_event,code)=>loungePair(code));
  ipcMain.handle('vw:lounge-play',(_event,id)=>loungePlay(id));
