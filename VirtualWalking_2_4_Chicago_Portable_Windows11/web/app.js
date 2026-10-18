@@ -374,6 +374,15 @@ function rememberLastVideo(url,name){
  $('lastVideoHint').hidden=false;
  $('lastVideoHint').textContent='Zuletzt verwendet: '+name;
 }
+async function applyOriginalYoutubeTitle(url,id){
+ if(!window.vwDesktop?.youtubeTitle)return;
+ try{
+  const title=await window.vwDesktop.youtubeTitle(id);
+  if(lastVideoChoice?.url!==url)return;
+  rememberLastVideo(url,title);
+  if(tvSource?.kind==='youtube'&&tvSource.youtubeId===id)$('videoTitle').textContent=title;
+ }catch(e){console.warn('YouTube-Originaltitel nicht verfügbar:',e);}
+}
 async function initLastVideo(){
  let saved=null;
  if(window.vwDesktop?.lastVideoRead)try{saved=await window.vwDesktop.lastVideoRead();}catch(e){console.warn(e);}
@@ -381,6 +390,8 @@ async function initLastVideo(){
  if(!saved||typeof saved.url!=='string')return;
  try{const u=new URL(saved.url);if(!['http:','https:'].includes(u.protocol))return;}catch{return;}
  lastVideoChoice=saved;
+ const oldId=youtubeId(saved.url);
+ if(oldId&&(!saved.name||/^YouTube:\s*[A-Za-z0-9_-]{11}$/.test(saved.name)))applyOriginalYoutubeTitle(saved.url,oldId);
  $('restoreLastVideo').hidden=false;
  $('lastVideoHint').hidden=false;
  $('lastVideoHint').textContent='Zuletzt verwendet: '+String(saved.name||saved.url).slice(0,120)+' – noch nicht gestartet.';
@@ -392,7 +403,7 @@ $('restoreLastVideo').addEventListener('click',()=>{
  $('loadUrl').click();
 });
 initLastVideo();
-$('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){announce('Bitte Video-Adresse einfügen.');return;}let url;try{url=new URL(value);if(!['https:','http:'].includes(url.protocol))throw Error();}catch{announce('Bitte eine gültige HTTP(S)-Adresse eingeben.');return;}videoReset();const id=youtubeId(value);if(id){if(!/^[a-zA-Z0-9_-]{11}$/.test(id)){announce('Ungültige YouTube-Video-ID.');return;}const iframe=document.createElement('iframe');iframe.src=`https://www.youtube-nocookie.com/embed/${id}?rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;iframe.title='YouTube Laufvideo';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.allowFullscreen=true;activeVideoKind='youtube';tvSource={kind:'youtube',youtubeId:id};rememberLastVideo(value,'YouTube: '+id);$('video').hidden=true;$('youtube').hidden=false;$('youtube').append(iframe);const attach=()=>{if(window.YT?.Player){try{ytPlayer=new YT.Player(iframe,{events:{onReady:(event)=>{manager.setYoutube(event.target);updateVideoSync();if(session?.running)videoAction('play');},onError:()=>{$('videoHealth').textContent='YouTube: Video nicht abspielbar';}}});}catch(e){announce('YouTube: '+e.message);}}else setTimeout(attach,250);};attach();$('videoTitle').textContent='YouTube-Laufvideo';announce('YouTube-Player geöffnet. Einbettung und Verbindung hängen vom Videoanbieter ab.');}else{activeVideoKind='online';tvSource={kind:'url',url:value};rememberLastVideo(value,'Onlinevideo');$('video').src=value;manager.setOnline(value);$('videoTitle').textContent='Online-Laufvideo';announce('Onlinevideo geladen. Direkter MP4/WebM-Link erforderlich.');if(session?.running)videoAction('play');}};
+$('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){announce('Bitte Video-Adresse einfügen.');return;}let url;try{url=new URL(value);if(!['https:','http:'].includes(url.protocol))throw Error();}catch{announce('Bitte eine gültige HTTP(S)-Adresse eingeben.');return;}videoReset();const id=youtubeId(value);if(id){if(!/^[a-zA-Z0-9_-]{11}$/.test(id)){announce('Ungültige YouTube-Video-ID.');return;}const iframe=document.createElement('iframe');iframe.src=`https://www.youtube-nocookie.com/embed/${id}?rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;iframe.title='YouTube Laufvideo';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.allowFullscreen=true;activeVideoKind='youtube';tvSource={kind:'youtube',youtubeId:id};rememberLastVideo(value,'YouTube-Video (Titel wird geladen)');applyOriginalYoutubeTitle(value,id);$('video').hidden=true;$('youtube').hidden=false;$('youtube').append(iframe);const attach=()=>{if(window.YT?.Player){try{ytPlayer=new YT.Player(iframe,{events:{onReady:(event)=>{manager.setYoutube(event.target);updateVideoSync();if(session?.running)videoAction('play');},onError:()=>{$('videoHealth').textContent='YouTube: Video nicht abspielbar';}}});}catch(e){announce('YouTube: '+e.message);}}else setTimeout(attach,250);};attach();$('videoTitle').textContent='YouTube-Video (Titel wird geladen)';announce('YouTube-Player geöffnet. Einbettung und Verbindung hängen vom Videoanbieter ab.');}else{activeVideoKind='online';tvSource={kind:'url',url:value};rememberLastVideo(value,'Onlinevideo');$('video').src=value;manager.setOnline(value);$('videoTitle').textContent='Online-Laufvideo';announce('Onlinevideo geladen. Direkter MP4/WebM-Link erforderlich.');if(session?.running)videoAction('play');}};
 $('video').addEventListener('error',()=>{if($('video').src)announce('Dieses Video konnte nicht abgespielt werden. Bitte direkten MP4/WebM-Link oder lokale Datei verwenden.');});
 
 // HTML5 uses smooth playback rates; YouTube uses the official player's supported steps.
