@@ -22,5 +22,6 @@ contextBridge.exposeInMainWorld('vwDesktop',{
  removeChicago:id=>ipcRenderer.invoke('vw:remove-chicago',id),
  downloadChicago:args=>ipcRenderer.invoke('vw:download-chicago',args),
  chicagoPath:()=>ipcRenderer.invoke('vw:chicago-path'),
+ openChicagoFolder:()=>ipcRenderer.invoke('vw:open-chicago-folder'),
  onDownloadProgress:callback=>{ipcRenderer.on('vw:download-progress',(_event,data)=>callback(data));}
 });
