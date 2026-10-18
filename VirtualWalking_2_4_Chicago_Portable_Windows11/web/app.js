@@ -22,7 +22,7 @@ function experimentalTvRate(){
   if(!remoteTvMode||!remoteTvLoaded||!remoteTvPlaying||!opt.checked)return;
   try{
    await window.vwDesktop.loungeSetRate(rate);
-   status.textContent='Testbefehl '+rate.toLocaleString('de-DE')+'× gesendet – bitte Wirkung am Philips prüfen.';
+   status.textContent='Testbefehl '+rate.toLocaleString('de-DE')+'× übertragen – YouTube bestätigt die tatsächliche Wiedergabegeschwindigkeit nicht.';
   }catch(e){
    opt.checked=false;status.textContent='Geschwindigkeitstest deaktiviert: '+e.message;
   }
@@ -238,6 +238,20 @@ $('loungePlay').addEventListener('click',()=>{
  remoteTvSetPlaying(!!session?.running);
  updateVideoSync();
 });
+for(const [buttonId,rate] of [['tvRateHalf',0.5],['tvRateNormal',1],['tvRateDouble',2]]){
+ $(buttonId).addEventListener('click',()=>{
+  const status=$('tvRateDiagnostic');
+  if(!remoteTvMode||!remoteTvLoaded){status.textContent='Bitte zuerst das Testvideo auf dem Philips starten.';return;}
+  status.textContent='Sende '+rate.toLocaleString('de-DE')+'× an YouTube …';
+  remoteTvQueue=remoteTvQueue.catch(()=>{}).then(async()=>{
+   try{
+    const response=await window.vwDesktop.loungeSetRate(rate);
+    lastRemoteRate=rate;lastRemoteRateAt=Date.now();
+    status.textContent='Übertragung: '+response.transport+'; '+rate.toLocaleString('de-DE')+'× angefordert; TV-Wirkung NICHT bestätigt. Antwort-Ereignisse: '+(response.responseEvents?.join(', ')||'keine')+'. Bitte die tatsächliche Videogeschwindigkeit beobachten.';
+   }catch(e){status.textContent='Übertragungsfehler bei '+rate.toLocaleString('de-DE')+'×: '+e.message;}
+  });
+ });
+}
 $('loungeRateExperiment').addEventListener('change',()=>{
  lastRemoteRate=null;lastRemoteRateAt=0;
  $('loungeRateStatus').textContent=$('loungeRateExperiment').checked?'Geschwindigkeitstest aktiv. Starte das Laufband und beobachte den Philips.':'Geschwindigkeitstest aus.';
