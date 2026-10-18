@@ -1,6 +1,8 @@
  'use strict';
 const {contextBridge,ipcRenderer,webUtils}=require('electron');
 contextBridge.exposeInMainWorld('vwDesktop',{
+ setDesktopFullscreen:enabled=>ipcRenderer.invoke('vw:desktop-fullscreen',enabled),
+ onDesktopFullscreenState:callback=>ipcRenderer.on('vw:desktop-fullscreen-state',(_e,active)=>callback(active)),
  openTv:()=>ipcRenderer.invoke('vw:tv-open'),
  closeTv:()=>ipcRenderer.invoke('vw:tv-close'),
  loadTv:data=>ipcRenderer.invoke('vw:tv-load',data),
