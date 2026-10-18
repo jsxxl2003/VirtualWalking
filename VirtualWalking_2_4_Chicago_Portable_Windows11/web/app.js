@@ -18,7 +18,7 @@ function onMachineStatus(event){
  if(op===0x02&&v.byteLength>=2){
   const reason=v.getUint8(1);
   if(reason===0x01){automaticStopLock=true;manualPauseHold=false;speed=0;clearMotionCounters();if(session)stop();announce('Laufband per Fernbedienung beendet – Training gespeichert.');ui();}
-  else if(reason===0x02){manualPauseHold=false;speed=0;clearMotionCounters();if(session?.running)pause(true);announce('Laufband per Fernbedienung pausiert.');ui();}
+  else if(reason===0x02){manualPauseHold=true;speed=0;clearMotionCounters();if(session?.running)pause(true);announce('Laufband per Fernbedienung pausiert.');ui();}
  }else if(op===0x03){
   automaticStopLock=true;manualPauseHold=false;speed=0;clearMotionCounters();if(session)stop();announce('Sicherheitsstopp erkannt – Training gespeichert.');ui();
  }else if(op===0x04){
