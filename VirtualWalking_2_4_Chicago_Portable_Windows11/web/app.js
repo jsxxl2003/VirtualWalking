@@ -155,6 +155,43 @@ $('discoverTv').addEventListener('click',async()=>{
  }catch(e){status.textContent='Gerätesuche fehlgeschlagen: '+e.message;}
  finally{button.disabled=false;}
 });
+// Direct YouTube TV-code test (unofficial Lounge API).
+async function refreshLoungeStatus(){
+ const el=$('loungeStatus');
+ if(!window.vwDesktop?.loungeStatus){el.textContent='TV-Code-Kopplung nur in der Windows-EXE verfügbar.';return;}
+ try{const result=await window.vwDesktop.loungeStatus();
+  el.textContent=result.paired?'Philips/YouTube gekoppelt – Video auswählen und an TV senden.':'Noch kein TV-Code gekoppelt.';
+ }catch(e){el.textContent='Status konnte nicht gelesen werden: '+e.message;}
+}
+$('loungePair').addEventListener('click',async()=>{
+ const btn=$('loungePair'),code=$('loungeCode').value.trim();
+ if(!window.vwDesktop?.loungePair){announce('Bitte die neue Windows-EXE starten.');return;}
+ btn.disabled=true;$('loungeStatus').textContent='TV-Code wird geprüft …';
+ try{const result=await window.vwDesktop.loungePair(code);
+  $('loungeCode').value='';
+  $('loungeStatus').textContent='Gekoppelt: '+result.name+'. Jetzt ein YouTube-Video an den Philips senden.';
+ }catch(e){$('loungeStatus').textContent='Kopplung fehlgeschlagen: '+e.message;}
+ finally{btn.disabled=false;}
+});
+$('loungePlay').addEventListener('click',async()=>{
+ const btn=$('loungePlay');
+ if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
+  announce('Bitte zuerst ein YouTube-Video in VirtualWalking auswählen.');return;
+ }
+ if(!window.vwDesktop?.loungePlay){announce('Bitte die neue Windows-EXE starten.');return;}
+ btn.disabled=true;$('loungeStatus').textContent='Video wird an die YouTube-App auf dem Philips gesendet …';
+ try{await window.vwDesktop.loungePlay(tvSource.youtubeId);
+  $('loungeStatus').textContent='Video-Befehl gesendet. Bitte prüfen, ob das Video auf dem Philips startet.';
+ }catch(e){$('loungeStatus').textContent='Videoübertragung fehlgeschlagen: '+e.message;}
+ finally{btn.disabled=false;}
+});
+$('loungeUnpair').addEventListener('click',async()=>{
+ if(!window.vwDesktop?.loungeUnpair)return;
+ try{await window.vwDesktop.loungeUnpair();$('loungeStatus').textContent='Kopplung gelöscht.';}
+ catch(e){$('loungeStatus').textContent='Löschen fehlgeschlagen: '+e.message;}
+});
+refreshLoungeStatus();
+
 $('youtubeDirectTv').addEventListener('click',()=>{
  if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
   announce('Bitte zuerst einen YouTube-Link als Laufvideo öffnen.');return;
