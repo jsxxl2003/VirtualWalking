@@ -3,6 +3,7 @@ const {app,BrowserWindow,session,shell,ipcMain,dialog,Menu,screen}=require('elec
 const http=require('node:http');
 const https=require('node:https');
 const dgram=require('node:dgram');
+const net=require('node:net');
 const fs=require('node:fs');
 const fsp=require('node:fs/promises');
 const path=require('node:path');
@@ -148,6 +149,27 @@ function discoverTvReceivers(){
   });
  });
 }
+// Read-only Cast port probe; reachable ports are indicators, not proof of Cast compatibility.
+function testTvPort(ip,port){
+ return new Promise(resolve=>{
+  const socket=net.createConnection({host:ip,port});
+  let finished=false;
+  const done=ok=>{if(finished)return;finished=true;socket.destroy();resolve(ok);};
+  socket.setTimeout(1800);
+  socket.once('connect',()=>done(true));
+  socket.once('timeout',()=>done(false));
+  socket.once('error',()=>done(false));
+ });
+}
+async function checkPhilipsCast(){
+ const ip='192.168.0.27';
+ const [port8008,port8009]=await Promise.all([testTvPort(ip,8008),testTvPort(ip,8009)]);
+ let message;
+ if(port8009)message='Port 8009 ist erreichbar. Google Cast könnte unterstützt werden; für einen Nachweis ist ein Cast-Protokolltest nötig.';
+ else if(port8008)message='Port 8008 ist erreichbar, Port 8009 nicht. Google Cast ist damit nicht bestätigt.';
+ else message='Weder Port 8008 noch 8009 ist erreichbar. Google Cast ist auf dieser IP nicht nachgewiesen; YouTube-Übertragung aus Chrome kann trotzdem funktionieren.';
+ return {ip,port8008,port8009,message};
+}
 // Read-only DIAL compatibility check. No TV application is launched here.
 function tvHttpGet(url,expectedIp){
  return new Promise((resolve,reject)=>{
@@ -262,6 +284,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:write-profile',(_event,data)=>writeProfile(data));
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
+ ipcMain.handle('vw:check-philips-cast',()=>checkPhilipsCast());
  ipcMain.handle('vw:launch-philips-youtube',()=>launchPhilipsYoutube());
  ipcMain.handle('vw:send-youtube-to-philips',(_event,id)=>sendYoutubeVideoToPhilips(id));
  ipcMain.handle('vw:tv-open',async()=>openTv());
