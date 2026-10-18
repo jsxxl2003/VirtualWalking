@@ -2,6 +2,7 @@
 const {app,BrowserWindow,session,shell,ipcMain,dialog,Menu,screen}=require('electron');
 const http=require('node:http');
 const https=require('node:https');
+const dgram=require('node:dgram');
 const fs=require('node:fs');
 const fsp=require('node:fs/promises');
 const path=require('node:path');
@@ -92,6 +93,37 @@ async function downloadVideo({url,name,permission}){
   win?.webContents.send('vw:download-progress',{done:true,received,total:received});return publicEntries(entries);
  }finally{downloadBusy=false;if(temp)await fsp.unlink(temp).catch(()=>{});}
 }
+// Discover LAN receivers using SSDP only. Discovery does not imply Cast control.
+function discoverTvReceivers(){
+ return new Promise(resolve=>{
+  const socket=dgram.createSocket({type:'udp4',reuseAddr:true});
+  const found=new Map();let finished=false;
+  const finish=()=>{if(finished)return;finished=true;clearTimeout(timeout);try{socket.close();}catch{}resolve([...found.values()].slice(0,20));};
+  const timeout=setTimeout(finish,3500);
+  socket.on('error',finish);
+  socket.on('message',(msg,rinfo)=>{
+   const raw=msg.toString('utf8');
+   if(!/^HTTP\/1\.1 200/i.test(raw))return;
+   const header={};
+   for(const line of raw.split(/\r?\n/).slice(1)){
+    const i=line.indexOf(':');if(i>0)header[line.slice(0,i).trim().toLowerCase()]=line.slice(i+1).trim();
+   }
+   const st=String(header.st||''),usn=String(header.usn||''),server=String(header.server||'');
+   if(!/dial|googlecast|chromecast|mediarenderer/i.test([st,usn,server].join(' ')))return;
+   const ip=rinfo.address;
+   if(!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip))return;
+   const kind=/dial/i.test(st+usn)?'DIAL / YouTube':/googlecast|chromecast/i.test(st+usn)?'Google Cast':'Medienempfänger';
+   found.set(ip+kind,{ip,kind,description:server.slice(0,100)});
+  });
+  socket.bind(0,'0.0.0.0',()=>{
+   const targets=['urn:dial-multiscreen-org:service:dial:1','urn:dial-multiscreen-org:device:dial:1','urn:schemas-upnp-org:device:MediaRenderer:1'];
+   for(const st of targets){
+    const data=Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: '+st+'\r\n\r\n');
+    try{socket.send(data,1900,'239.255.255.250');}catch{}
+   }
+  });
+ });
+}
 function tvDisplay(){
  const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
  return all.find(d=>d.id!==primary.id)||null;
@@ -118,6 +150,7 @@ app.whenReady().then(async()=>{
   win.setFullScreen(!!enabled);
   return win.isFullScreen();
  });
+ ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
  ipcMain.handle('vw:tv-open',async()=>openTv());
  ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
  ipcMain.handle('vw:tv-load',async(_event,data)=>{
