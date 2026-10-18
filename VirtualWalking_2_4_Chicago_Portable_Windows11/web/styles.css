@@ -146,3 +146,7 @@ main{padding-top:14px}
 #loungeCode{flex:1 1 170px;min-width:140px}
 #loungePlay{font-weight:700}
 #loungeStatus{min-height:18px}
+
+/* Exclusive Philips playback: suppress local video while TV owns playback. */
+#videoWrap.tv-remote video,#videoWrap.tv-remote #youtube{display:none!important}
+#videoWrap.tv-remote::after{content:"📺 Wiedergabe auf Philips – App-Player pausiert";position:absolute;inset:20% 8%;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;background:#111c;border-radius:14px;font-size:clamp(17px,2vw,26px);font-weight:700;pointer-events:none}
