@@ -108,6 +108,8 @@ $('discoverTv').addEventListener('click',async()=>{
   const devices=await window.vwDesktop.discoverTv();
   if(!devices.length){status.textContent='Kein kompatibler Empfänger gefunden. Die manuelle YouTube-Übertragung bleibt möglich.';return;}
   status.textContent=devices.length+' mögliche(r) TV-Empfänger gefunden. Noch keine automatische Steuerung.';
+  const philips=devices.find(d=>d.ip==='192.168.0.27');
+  $('philipsTarget').textContent=philips?'Philips Ambilight unter 192.168.0.27 gefunden ('+philips.kind+'). Direkte Wiedergabe wird noch geprüft.':'Philips unter 192.168.0.27 nicht gefunden. Möglicherweise hat sich die IP-Adresse geändert.';
   for(const item of devices){
    const line=document.createElement('div');
    line.textContent=item.kind+' – '+item.ip+(item.description?' ('+item.description+')':'');
