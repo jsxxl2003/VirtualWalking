@@ -265,21 +265,53 @@ function updateVideoSync(){const enabled=$('syncEnabled').checked,video=$('video
  $('syncInfo').textContent=`${speed.toFixed(1).replace('.',',')} km/h → ${actual.toFixed(2).replace('.',',')}× Videotempo (Referenz ${ref} km/h)${activeVideoKind==='youtube'?' · YouTube-Stufe':''}.`;
  if(syncPaused&&speed>=.1&&session?.running){syncPaused=false;manager.play();}}
 for(const id of ['syncEnabled','pauseAtZero','referenceSpeed'])$(id).addEventListener('change',updateVideoSync);
-// Profile values stay local. Keep the existing weight key for compatibility.
+// Windows profile persists in Electron userData, not the changing localhost origin.
 const profileFields={weight:{min:25,max:300},height:{min:100,max:250},age:{min:10,max:120},gender:{values:['female','male','diverse']}};
-for(const [field,rules] of Object.entries(profileFields)){
- const input=$(field),key='virtualwalking_'+field;
- input.value=localStorage.getItem(key)||'';
- input.addEventListener('change',()=>{
-  const raw=input.value.trim();
-  const value=Number(raw);
-  const valid=!raw||('values' in rules?rules.values.includes(raw):Number.isFinite(value)&&value>=rules.min&&value<=rules.max);
-  if(!valid){$('profileStatus').textContent='Ungültige Angabe bei '+field+' – bitte korrigieren.';return;}
-  try{if(raw)localStorage.setItem(key,raw);else localStorage.removeItem(key);$('profileStatus').textContent='Persönliche Angaben lokal gespeichert.';}
-  catch(e){$('profileStatus').textContent='Speichern nicht möglich: '+e.message;}
-  ui();
- });
+let profileWriteQueue=Promise.resolve();
+function currentProfile(){
+ const values={};
+ for(const field of Object.keys(profileFields))values[field]=$(field).value.trim();
+ return values;
 }
+function validProfileField(field,raw){
+ const rules=profileFields[field],value=Number(raw);
+ return !raw||('values' in rules?rules.values.includes(raw):Number.isFinite(value)&&value>=rules.min&&value<=rules.max);
+}
+async function initializeProfile(){
+ const saved={};
+ for(const field of Object.keys(profileFields)){
+  try{saved[field]=localStorage.getItem('virtualwalking_'+field)||'';}catch{saved[field]='';}
+ }
+ if(window.vwDesktop?.readProfile){
+  try{
+   const durable=await window.vwDesktop.readProfile();
+   for(const field of Object.keys(profileFields))if(Object.hasOwn(durable,field))saved[field]=String(durable[field]);
+  }catch(e){$('profileStatus').textContent='Profil konnte nicht geladen werden: '+e.message;}
+ }
+ for(const field of Object.keys(profileFields)){
+  const input=$(field);
+  if(!input.value&&validProfileField(field,saved[field]))input.value=saved[field];
+  const save=()=>{
+   const raw=input.value.trim();
+   if(!validProfileField(field,raw)){$('profileStatus').textContent='Ungültige Angabe bei '+field+' – bitte korrigieren.';return;}
+   try{if(raw)localStorage.setItem('virtualwalking_'+field,raw);else localStorage.removeItem('virtualwalking_'+field);}catch{}
+   if(window.vwDesktop?.writeProfile){
+    const snapshot=currentProfile();
+    profileWriteQueue=profileWriteQueue.catch(()=>{}).then(()=>window.vwDesktop.writeProfile(snapshot));
+    profileWriteQueue.then(()=>$('profileStatus').textContent='Persönliche Angaben dauerhaft gespeichert.',e=>$('profileStatus').textContent='Speichern fehlgeschlagen: '+e.message);
+   }else $('profileStatus').textContent='Persönliche Angaben in diesem Browser gespeichert.';
+   ui();
+  };
+  input.addEventListener('change',save);
+  input.addEventListener('blur',save);
+ }
+ // Migrate any profile values recovered from the old browser storage.
+ if(window.vwDesktop?.writeProfile&&Object.values(currentProfile()).some(Boolean)){
+  profileWriteQueue=profileWriteQueue.then(()=>window.vwDesktop.writeProfile(currentProfile()));
+  profileWriteQueue.catch(e=>$('profileStatus').textContent='Profilübernahme fehlgeschlagen: '+e.message);
+ }
+}
+initializeProfile();
 // Route discovery and favorites UI paused; existing saved favorites remain in localStorage.
 
 // Native Windows Chicago library: stream saved files through the local server (supports Range).
