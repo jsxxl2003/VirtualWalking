@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('vwDesktop',{
  loungeStatus:()=>ipcRenderer.invoke('vw:lounge-status'),
  loungePair:code=>ipcRenderer.invoke('vw:lounge-pair',code),
  loungePlay:id=>ipcRenderer.invoke('vw:lounge-play',id),
+ loungePause:()=>ipcRenderer.invoke('vw:lounge-pause'),
  loungeUnpair:()=>ipcRenderer.invoke('vw:lounge-unpair'),
  checkPhilipsDial:()=>ipcRenderer.invoke('vw:check-philips-dial'),
  checkPhilipsCast:()=>ipcRenderer.invoke('vw:check-philips-cast'),
