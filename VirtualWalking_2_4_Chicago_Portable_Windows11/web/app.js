@@ -100,6 +100,22 @@ $('directTvConnected').addEventListener('change',()=>{
  updateDirectTvHint();
 });
 $('directTvVoice').addEventListener('change',()=>{lastTvSpokenRate=null;if(!$('directTvVoice').checked&&'speechSynthesis' in window)window.speechSynthesis.cancel();});
+$('discoverTv').addEventListener('click',async()=>{
+ const button=$('discoverTv'),status=$('tvDiscoveryStatus'),results=$('tvDiscoveryResults');
+ if(!window.vwDesktop?.discoverTv){status.textContent='Die Suche funktioniert nur in der Windows-EXE.';return;}
+ button.disabled=true;results.replaceChildren();status.textContent='Suche im Heimnetzwerk (ca. 4 Sekunden) …';
+ try{
+  const devices=await window.vwDesktop.discoverTv();
+  if(!devices.length){status.textContent='Kein kompatibler Empfänger gefunden. Die manuelle YouTube-Übertragung bleibt möglich.';return;}
+  status.textContent=devices.length+' mögliche(r) TV-Empfänger gefunden. Noch keine automatische Steuerung.';
+  for(const item of devices){
+   const line=document.createElement('div');
+   line.textContent=item.kind+' – '+item.ip+(item.description?' ('+item.description+')':'');
+   results.append(line);
+  }
+ }catch(e){status.textContent='Gerätesuche fehlgeschlagen: '+e.message;}
+ finally{button.disabled=false;}
+});
 $('youtubeDirectTv').addEventListener('click',()=>{
  if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
   announce('Bitte zuerst einen YouTube-Link als Laufvideo öffnen.');return;
