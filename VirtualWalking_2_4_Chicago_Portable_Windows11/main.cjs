@@ -254,6 +254,88 @@ async function sendYoutubeVideoToPhilips(youtubeId){
   return {ok:accepted,status:response.status,message:accepted?'Philips hat den Video-Startbefehl angenommen (HTTP '+response.status+'). Bitte prüfen, ob das richtige Video läuft.':'Philips hat den Video-Startbefehl nicht angenommen (HTTP '+response.status+').'};
  }catch(e){return {ok:false,message:'Direkter Video-Starttest fehlgeschlagen: '+e.message};}
 }
+
+// Experimental YouTube Lounge integration. Unofficial API, not Google-supported.
+// Keep the TV code and Lounge token out of the renderer and source repository.
+const loungeState={screenId:null,token:null,expires:0};
+function loungeFile(){return path.join(app.getPath('userData'),'youtube-lounge-screen.json');}
+async function loungeRead(){
+ if(loungeState.screenId)return loungeState;
+ try{const data=JSON.parse(await fsp.readFile(loungeFile(),'utf8'));
+  if(typeof data.screenId==='string'&&data.screenId.length<256)loungeState.screenId=data.screenId;
+ }catch(e){if(e.code!=='ENOENT')throw e;}
+ return loungeState;
+}
+function loungePost(endpoint,query,fields){
+ return new Promise((resolve,reject)=>{
+  const body=new URLSearchParams(fields||{}).toString();
+  const url=new URL('https://www.youtube.com'+endpoint);
+  for(const [k,v] of Object.entries(query||{}))url.searchParams.set(k,String(v));
+  const req=https.request(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body),'User-Agent':'VirtualWalking/2.4'},timeout:12000},res=>{
+   let data='';res.setEncoding('utf8');
+   res.on('data',chunk=>{data+=chunk;if(data.length>1024*1024)req.destroy(Error('Antwort zu groß'));});
+   res.on('end',()=>res.statusCode>=200&&res.statusCode<300?resolve(data):reject(Error('YouTube antwortet mit HTTP '+res.statusCode)));
+  });
+  req.on('timeout',()=>req.destroy(Error('YouTube-Zeitüberschreitung')));
+  req.on('error',reject);req.end(body);
+ });
+}
+async function loungePair(code){
+ const digits=String(code||'').replace(/\s/g,'');
+ if(!/^\d{6,15}$/.test(digits))throw Error('Bitte den Zahlencode vom Fernseher eingeben.');
+ const raw=await loungePost('/api/lounge/pairing/get_screen',null,{pairing_code:digits});
+ const data=JSON.parse(raw),screen=data.screen;
+ if(!screen||typeof screen.screenId!=='string'||!screen.screenId||typeof screen.loungeToken!=='string')throw Error('TV-Code wurde nicht akzeptiert.');
+ loungeState.screenId=screen.screenId;loungeState.token=screen.loungeToken;
+ loungeState.expires=Date.now()+12*24*3600*1000;
+ await fsp.mkdir(path.dirname(loungeFile()),{recursive:true});
+ await fsp.writeFile(loungeFile(),JSON.stringify({screenId:screen.screenId}),'utf8');
+ return {paired:true,name:String(screen.name||'YouTube-Fernseher').slice(0,80)};
+}
+async function loungeToken(){
+ await loungeRead();
+ if(!loungeState.screenId)throw Error('Bitte zuerst den TV-Code koppeln.');
+ if(loungeState.token&&Date.now()<loungeState.expires)return loungeState.token;
+ const raw=await loungePost('/api/lounge/pairing/get_lounge_token_batch',null,{screen_ids:loungeState.screenId});
+ const item=JSON.parse(raw).screens?.find(x=>x.screenId===loungeState.screenId);
+ if(!item?.loungeToken)throw Error('YouTube-Kopplung ist abgelaufen. Bitte TV-Code erneut eingeben.');
+ loungeState.token=item.loungeToken;
+ loungeState.expires=Date.now()+Math.min(Number(item.loungeTokenLifespanMs)||86400000,12*24*3600*1000);
+ return loungeState.token;
+}
+function loungeSessionIds(raw){
+ // Lounge responses are length-prefixed JSON event frames.
+ const ids={sid:null,gsessionid:null};
+ const scan=node=>{
+  if(!Array.isArray(node))return;
+  if(node[0]==='c'&&typeof node[1]==='string')ids.sid=node[1];
+  if(node[0]==='S'&&typeof node[1]==='string')ids.gsessionid=node[1];
+  for(const part of node)if(Array.isArray(part))scan(part);
+ };
+ const frames=raw.matchAll(/(?:^|\n)(\d+)\n/g);
+ for(const match of frames){
+  const start=match.index+match[0].length,len=Number(match[1]);
+  if(len>0&&len<1000000){try{scan(JSON.parse(raw.slice(start,start+len)));}catch{}}
+ }
+ return ids;
+}
+async function loungePlay(videoId){
+ if(!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId||'')))throw Error('Bitte ein gültiges YouTube-Video auswählen.');
+ const token=await loungeToken();
+ const base={CVER:1,VER:8,app:'youtube-desktop',device:'REMOTE_CONTROL',id:'virtualwalking',loungeIdToken:token,name:'VirtualWalking'};
+ const init=await loungePost('/api/lounge/bc/bind',{...base,RID:1},{});
+ const ids=loungeSessionIds(init);
+ if(!ids.sid||!ids.gsessionid)throw Error('YouTube-Sitzung konnte nicht geöffnet werden. Bitte YouTube auf dem TV starten.');
+ await loungePost('/api/lounge/bc/bind',{...base,RID:2,SID:ids.sid,gsessionid:ids.gsessionid},
+  {count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId});
+ return {sent:true};
+}
+async function loungeUnpair(){
+ loungeState.screenId=null;loungeState.token=null;loungeState.expires=0;
+ try{await fsp.unlink(loungeFile());}catch(e){if(e.code!=='ENOENT')throw e;}
+ return {paired:false};
+}
+
 function tvDisplay(){
  const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
  return all.find(d=>d.id!==primary.id)||null;
@@ -283,6 +365,10 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:read-profile',()=>readProfile());
  ipcMain.handle('vw:write-profile',(_event,data)=>writeProfile(data));
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
+ ipcMain.handle('vw:lounge-status',async()=>({paired:!!(await loungeRead()).screenId}));
+ ipcMain.handle('vw:lounge-pair',(_event,code)=>loungePair(code));
+ ipcMain.handle('vw:lounge-play',(_event,id)=>loungePlay(id));
+ ipcMain.handle('vw:lounge-unpair',()=>loungeUnpair());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:check-philips-cast',()=>checkPhilipsCast());
  ipcMain.handle('vw:launch-philips-youtube',()=>launchPhilipsYoutube());
