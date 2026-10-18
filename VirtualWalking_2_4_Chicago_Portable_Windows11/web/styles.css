@@ -17,3 +17,11 @@
 .video-wrap:fullscreen,.video-wrap:-webkit-full-screen{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;background:#000;display:flex;align-items:center;justify-content:center}
 .video-wrap:fullscreen video,.video-wrap:fullscreen .youtube,.video-wrap:-webkit-full-screen video,.video-wrap:-webkit-full-screen .youtube{width:100%;height:100%;object-fit:contain}
 .video-wrap:fullscreen .youtube iframe,.video-wrap:-webkit-full-screen .youtube iframe{width:100%;height:100%}
+
+/* Personal profile: compact, readable and responsive. */
+.profile-settings{margin:16px 0 18px;padding:14px;background:#142830;border:1px solid var(--border);border-radius:13px}
+.profile-settings h3{font-size:16px;margin-bottom:5px}
+.profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.profile-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+.profile-grid input,.profile-grid select{width:100%;min-width:0;background:#0b171d;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px;font:inherit}
+@media(max-width:520px){.profile-grid{grid-template-columns:1fr}}
