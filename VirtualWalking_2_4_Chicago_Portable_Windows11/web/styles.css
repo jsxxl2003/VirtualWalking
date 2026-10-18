@@ -138,3 +138,11 @@ main{padding-top:14px}
 .browser-fallback>summary{cursor:pointer;font-size:13px;color:var(--muted)}
 .browser-fallback[open]>button{margin-top:12px}
 .browser-fallback .direct-tv-guide{margin-top:12px}
+
+/* Experimental direct YouTube Lounge TV-code pairing */
+.lounge-panel{border:1px solid var(--border);border-radius:12px;padding:13px;margin:8px 0;background:var(--panel,#17212b)}
+.lounge-panel>strong{display:block;margin-bottom:7px}
+.lounge-panel .url-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+#loungeCode{flex:1 1 170px;min-width:140px}
+#loungePlay{font-weight:700}
+#loungeStatus{min-height:18px}
