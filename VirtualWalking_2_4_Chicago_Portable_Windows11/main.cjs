@@ -11,6 +11,30 @@ const {pipeline}=require('node:stream/promises');
 let server,win,tvWin,port,downloadBusy=false,tvMediaPath=null,tvCurrent=null;
 const supported={'.mp4':'video/mp4','.webm':'video/webm'};
 function libraryDir(){let base;try{base=app.getPath('videos');}catch{base=app.getPath('documents');}return path.join(base,'VirtualWalking','Chicago');}
+// Persist private profile independently of the changing localhost server port.
+const profileRules={weight:[25,300],height:[100,250],age:[10,120]};
+function profileFile(){return path.join(app.getPath('userData'),'personal-profile.json');}
+function sanitizeProfile(data){
+ const clean={};if(!data||typeof data!=='object')return clean;
+ for(const [field,[min,max]] of Object.entries(profileRules)){
+  const raw=String(data[field]??'').trim();
+  if(raw&&Number.isFinite(Number(raw))&&Number(raw)>=min&&Number(raw)<=max)clean[field]=raw;
+ }
+ if(['female','male','diverse'].includes(data.gender))clean.gender=data.gender;
+ return clean;
+}
+async function readProfile(){
+ try{return sanitizeProfile(JSON.parse(await fsp.readFile(profileFile(),'utf8')));}
+ catch(e){if(e.code==='ENOENT')return {};throw e;}
+}
+async function writeProfile(data){
+ const clean=sanitizeProfile(data),file=profileFile();
+ await fsp.mkdir(path.dirname(file),{recursive:true});
+ const temp=file+'.tmp';
+ await fsp.writeFile(temp,JSON.stringify(clean,null,2),'utf8');
+ await fsp.rename(temp,file);
+ return clean;
+}
 async function ensureDir(){await fsp.mkdir(libraryDir(),{recursive:true});}
 async function list(){await ensureDir();let entries=[];try{entries=JSON.parse(await fsp.readFile(path.join(libraryDir(),'library.json'),'utf8'));}catch{}
  if(!Array.isArray(entries))return [];return entries.filter(x=>x&&typeof x.id==='string'&&/^[0-9a-f-]{36}$/.test(x.id)&&supported[x.ext]);}
@@ -234,6 +258,8 @@ app.whenReady().then(async()=>{
   win.setFullScreen(!!enabled);
   return win.isFullScreen();
  });
+ ipcMain.handle('vw:read-profile',()=>readProfile());
+ ipcMain.handle('vw:write-profile',(_event,data)=>writeProfile(data));
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:launch-philips-youtube',()=>launchPhilipsYoutube());
