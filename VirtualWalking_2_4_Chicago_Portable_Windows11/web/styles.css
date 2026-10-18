@@ -98,3 +98,14 @@ main{padding:clamp(16px,1.8vw,32px) clamp(18px,2vw,44px)}
 .direct-tv-speed strong{display:block;font-size:clamp(36px,4vw,52px);line-height:1.2;color:#b7f77d;font-variant-numeric:tabular-nums}
 #directTvRateHelp{font-size:13px;color:#d1e2e4;max-width:230px}
 .direct-tv-guide .toggle{font-size:14px}
+
+/* All saved videos, multi-select, and safe bulk removal. */
+.chicago-manage{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}
+.chicago-manage strong{font-size:14px}
+.chicago-manage .toggle{font-size:13px}
+.chicago-files{max-height:420px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:4px}
+.chicago-entry{display:flex;align-items:center;gap:10px}
+.chicago-entry input[type="checkbox"]{flex:0 0 auto;width:18px;height:18px}
+.chicago-video-info{display:flex;flex-direction:column;flex:1;min-width:160px;overflow-wrap:anywhere}
+.chicago-video-info small{font-size:12px;opacity:.75}
+.chicago-video-name{font-weight:600}
