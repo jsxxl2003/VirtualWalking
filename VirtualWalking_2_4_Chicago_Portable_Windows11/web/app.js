@@ -61,18 +61,45 @@ function sendTvState(){
 // TV-Direkt-Test: YouTube plays in the TV's own app via the browser's Cast menu.
 // The YouTube remote receiver is NOT controlled by VirtualWalking; show the
 // suggested playback speed honestly rather than claiming automatic TV sync.
+const tvRateSteps=[.5,.75,1,1.25,1.5,1.75,2];
+let lastTvSpokenRate=null,lastTvSpokenAt=0;
 function directTvSuggestedRate(){
  const ref=Number($('referenceSpeed').value);
  return $('syncEnabled').checked&&device?.gatt?.connected&&ref>=1
   ?Math.max(.5,Math.min(2,speed/ref)):1;
 }
+function directTvStep(rate){
+ return tvRateSteps.reduce((best,item)=>Math.abs(item-rate)<Math.abs(best-rate)?item:best,1);
+}
 function updateDirectTvHint(){
  const el=$('directTvRate');
  if(!el)return;
- if(tvSource?.kind!=='youtube'){el.textContent='Nur für YouTube-Videos';return;}
- const rate=directTvSuggestedRate();
- el.textContent='TV-Tempo manuell einstellen: '+rate.toLocaleString('de-DE',{maximumFractionDigits:2})+'× (Richtwert)';
+ const youtube=tvSource?.kind==='youtube';
+ const connected=$('directTvConnected').checked;
+ const rate=directTvStep(directTvSuggestedRate());
+ const label=rate.toLocaleString('de-DE',{maximumFractionDigits:2})+'×';
+ el.textContent=youtube?label:'—';
+ $('directTvConnection').textContent=connected?'Übertragung manuell bestätigt':'Noch nicht bestätigt';
+ $('directTvRateHelp').textContent=youtube?(device?.gatt?.connected?'Nach Laufbandtempo – manuell am TV einstellen':'Laufband verbinden für Live-Empfehlung'):'Zuerst YouTube-Video auswählen';
+ if(!youtube||!connected||!$('directTvVoice').checked||!session?.running||!device?.gatt?.connected){lastTvSpokenRate=null;return;}
+ if(lastTvSpokenRate===null){lastTvSpokenRate=rate;return;}
+ if(rate===lastTvSpokenRate)return;
+ const now=Date.now();
+ if(now-lastTvSpokenAt<10000)return;
+ lastTvSpokenRate=rate;lastTvSpokenAt=now;
+ if('speechSynthesis' in window){
+  window.speechSynthesis.cancel();
+  const msg=new SpeechSynthesisUtterance('Fernseher Geschwindigkeit '+rate.toLocaleString('de-DE',{maximumFractionDigits:2}));
+  msg.lang='de-DE';msg.rate=1;
+  window.speechSynthesis.speak(msg);
+ }
 }
+$('directTvConnected').addEventListener('change',()=>{
+ lastTvSpokenRate=null;
+ announce($('directTvConnected').checked?'TV-Übertragung manuell bestätigt. Die angezeigte Geschwindigkeit bitte am Philips einstellen.':'TV-Übertragung als getrennt markiert.');
+ updateDirectTvHint();
+});
+$('directTvVoice').addEventListener('change',()=>{lastTvSpokenRate=null;if(!$('directTvVoice').checked&&'speechSynthesis' in window)window.speechSynthesis.cancel();});
 $('youtubeDirectTv').addEventListener('click',()=>{
  if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
   announce('Bitte zuerst einen YouTube-Link als Laufvideo öffnen.');return;
