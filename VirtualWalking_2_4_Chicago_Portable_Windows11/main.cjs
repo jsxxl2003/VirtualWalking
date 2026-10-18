@@ -1,5 +1,5 @@
  'use strict';
-const {app,BrowserWindow,session,shell,ipcMain,dialog}=require('electron');
+const {app,BrowserWindow,session,shell,ipcMain,dialog,Menu}=require('electron');
 const http=require('node:http');
 const https=require('node:https');
 const fs=require('node:fs');
@@ -85,6 +85,22 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:chicago-path',()=>libraryDir());
  win=new BrowserWindow({width:1460,height:960,minWidth:850,minHeight:620,autoHideMenuBar:true,
   webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(__dirname,'preload.cjs')}});
+ // Windows-Kontextmenue fuer Eingabefelder, insbesondere Video-URL.
+ win.webContents.on('context-menu',(_event,params)=>{
+  if(!params.isEditable)return;
+  const flags=params.editFlags||{};
+  const template=[
+   {label:'Rückgängig',role:'undo',enabled:!!flags.canUndo},
+   {label:'Wiederholen',role:'redo',enabled:!!flags.canRedo},
+   {type:'separator'},
+   {label:'Ausschneiden',role:'cut',enabled:!!flags.canCut},
+   {label:'Kopieren',role:'copy',enabled:!!flags.canCopy},
+   {label:'Einfügen',role:'paste',enabled:!!flags.canPaste},
+   {type:'separator'},
+   {label:'Alles auswählen',role:'selectAll'}
+  ];
+  Menu.buildFromTemplate(template).popup({window:win});
+ });
  win.webContents.on('select-bluetooth-device',(event,devices,callback)=>{event.preventDefault();const selected=devices.find(d=>/WELLFIT TM Linker/i.test(d.deviceName))||devices.find(d=>/WELLFIT/i.test(d.deviceName))||devices[0];callback(selected?.deviceId||'');});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return {action:'deny'};});
  await win.loadURL(`http://127.0.0.1:${port}`);
