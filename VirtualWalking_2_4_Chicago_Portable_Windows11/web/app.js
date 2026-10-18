@@ -4,7 +4,7 @@ const MACHINE_STATUS='00002ada-0000-1000-8000-00805f9b34fb';
 const $=id=>document.getElementById(id);
 let device=null, characteristic=null, speed=0, distance=null, session=null, elapsed=0, startedAt=0, timer=null, videoObjectUrl=null;
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
-let ytPlayer=null;
+let ytPlayer=null,tvSource=null,tvActive=false;
 let statusCharacteristic=null, zeroSince=0, movingSince=0, movingSamples=0;
 let automaticStopLock=false, manualPauseHold=false;
 const AUTO_ZERO_PAUSE_MS=2500;
@@ -51,7 +51,27 @@ const manager=new VirtualWalkingVideoManager({
  onMessage:message=>announce(message),
  onFallback:kind=>window.virtualWalkingFallback?.(kind)
 });
+function sendTvState(){
+ if(!tvActive||!window.vwDesktop)return;
+ const enabled=$('syncEnabled').checked,ref=Number($('referenceSpeed').value);
+ const rate=enabled&&device?.gatt?.connected&&ref>=1?Math.max(.5,Math.min(2,speed/ref)):1;
+ const playing=!!session?.running&&(!enabled||!$('pauseAtZero').checked||speed>=.1);
+ window.vwDesktop.sendTvState({playing,rate,time:null});
+}
+$('sendToTv').addEventListener('click',async()=>{
+ if(!window.vwDesktop?.openTv){announce('Die Fernseher-Funktion ist nur in der Windows-EXE verfügbar.');return;}
+ if(!tvSource){announce('Bitte zuerst ein Laufvideo auswählen.');return;}
+ try{
+  await window.vwDesktop.openTv();
+  await window.vwDesktop.loadTv(tvSource);
+  tvActive=true;$('closeTv').hidden=false;$('tvStatus').textContent='Fernseher aktiv';
+  manager.pause();sendTvState();announce('Video auf dem zweiten Bildschirm geöffnet.');
+ }catch(e){announce('Fernseher: '+e.message);$('tvStatus').textContent='Verbindung nicht möglich';}
+});
+$('closeTv').addEventListener('click',async()=>{await window.vwDesktop?.closeTv();tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
+window.vwDesktop?.onTvClosed(()=>{tvActive=false;$('closeTv').hidden=true;$('tvStatus').textContent='';if(session?.running)manager.play();});
 function videoAction(action){
+ if(tvActive){if(action==='stop')window.vwDesktop?.sendTvState({playing:false,rate:1,time:0});else sendTvState();return;}
  if(action==='play')manager.play();
  else if(action==='pause')manager.pause();
  else manager.stop();
@@ -63,7 +83,7 @@ function formatTime(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.f
 function workoutKm(){if(!session)return distance??0;const native=(distance!==null&&session.startDistance!==null)?distance-session.startDistance:null;return native!==null&&native>=0?native:session.estimatedKm;}
 function getSeconds(){return elapsed+(session?.running?(Date.now()-startedAt)/1000:0);}
 function caloriesFor(s, secs){const weight=Number($('weight').value);if(!Number.isFinite(weight)||weight<25||weight>300)return null;const avg=secs>0?s.sumKmhSeconds/secs:0;const met=avg<1?1:avg<3?2.5:avg<5?3.5:avg<6.5?4.3:avg<8?6:8.3;return Math.round(met*3.5*weight/200*(secs/60));}
-function ui(){const secs=getSeconds();$('speed').textContent=speed.toFixed(1).replace('.',',');$('distance').textContent=fmt(workoutKm());$('duration').textContent=formatTime(secs);$('averageSpeed').textContent=(session&&secs>0?session.sumKmhSeconds/secs:0).toFixed(1).replace('.',',');const kcal=session?caloriesFor(session,secs):null;$('calories').textContent=kcal===null?'—':kcal;$('start').disabled=!!session?.running;$('pause').disabled=!session?.running;$('stop').disabled=!session;$('start').textContent=session?'▶ Fortsetzen':'▶ Training starten';updateVideoSync();}
+function ui(){const secs=getSeconds();$('speed').textContent=speed.toFixed(1).replace('.',',');$('distance').textContent=fmt(workoutKm());$('duration').textContent=formatTime(secs);$('averageSpeed').textContent=(session&&secs>0?session.sumKmhSeconds/secs:0).toFixed(1).replace('.',',');const kcal=session?caloriesFor(session,secs):null;$('calories').textContent=kcal===null?'—':kcal;$('start').disabled=!!session?.running;$('pause').disabled=!session?.running;$('stop').disabled=!session;$('start').textContent=session?'▶ Fortsetzen':'▶ Training starten';updateVideoSync();sendTvState();}
 // FTMS 0x2ACD: flags uint16 LE, instantaneous speed uint16 / 100 km/h,
 // optional avg speed (bit 1), total distance (bit 2, uint24 meters), etc.
 function parseTreadmillData(view){if(view.byteLength<2)throw new Error('Zu kurzes FTMS-Datenpaket');let flags=view.getUint16(0,true), pos=2;const take=n=>{if(pos+n>view.byteLength)throw new Error('Unvollständige FTMS-Daten');let at=pos;pos+=n;return at;};let nextSpeed=null, nextDistance=null;
@@ -110,11 +130,11 @@ document.addEventListener('fullscreenchange',()=>{
  fullscreenButton.textContent=active?'⛶ Vollbild beenden':'⛶ Vollbild';
  fullscreenButton.setAttribute('aria-label',active?'Vollbild beenden':'Video im Vollbild anzeigen');
 });
-function videoReset(){manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
-function loadFile(file){if(!file)return;videoReset();videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
+function videoReset(){tvSource=null;manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
+function loadFile(file){if(!file)return;videoReset();try{const filePath=window.vwDesktop?.localFilePath(file);if(filePath)tvSource={kind:'local',path:filePath};}catch{}videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
 $('fileInput').onchange=e=>loadFile(e.target.files[0]);
 function youtubeId(u){try{const x=new URL(u);let host=x.hostname.replace(/^www\./,'');if(host==='youtu.be')return x.pathname.split('/')[1];if(['youtube.com','m.youtube.com','youtube-nocookie.com'].includes(host)){if(x.pathname==='/watch')return x.searchParams.get('v');let match=x.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/);return match?.[1]??null;}}catch{}return null;}
-$('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){announce('Bitte Video-Adresse einfügen.');return;}let url;try{url=new URL(value);if(!['https:','http:'].includes(url.protocol))throw Error();}catch{announce('Bitte eine gültige HTTP(S)-Adresse eingeben.');return;}videoReset();const id=youtubeId(value);if(id){if(!/^[a-zA-Z0-9_-]{11}$/.test(id)){announce('Ungültige YouTube-Video-ID.');return;}const iframe=document.createElement('iframe');iframe.src=`https://www.youtube-nocookie.com/embed/${id}?rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;iframe.title='YouTube Laufvideo';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.allowFullscreen=true;activeVideoKind='youtube';$('video').hidden=true;$('youtube').hidden=false;$('youtube').append(iframe);const attach=()=>{if(window.YT?.Player){try{ytPlayer=new YT.Player(iframe,{events:{onReady:(event)=>{manager.setYoutube(event.target);updateVideoSync();if(session?.running)videoAction('play');},onError:()=>{$('videoHealth').textContent='YouTube: Video nicht abspielbar';}}});}catch(e){announce('YouTube: '+e.message);}}else setTimeout(attach,250);};attach();$('videoTitle').textContent='YouTube-Laufvideo';announce('YouTube-Player geöffnet. Einbettung und Verbindung hängen vom Videoanbieter ab.');}else{activeVideoKind='online';$('video').src=value;manager.setOnline(value);$('videoTitle').textContent='Online-Laufvideo';announce('Onlinevideo geladen. Direkter MP4/WebM-Link erforderlich.');if(session?.running)videoAction('play');}};
+$('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){announce('Bitte Video-Adresse einfügen.');return;}let url;try{url=new URL(value);if(!['https:','http:'].includes(url.protocol))throw Error();}catch{announce('Bitte eine gültige HTTP(S)-Adresse eingeben.');return;}videoReset();const id=youtubeId(value);if(id){if(!/^[a-zA-Z0-9_-]{11}$/.test(id)){announce('Ungültige YouTube-Video-ID.');return;}const iframe=document.createElement('iframe');iframe.src=`https://www.youtube-nocookie.com/embed/${id}?rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;iframe.title='YouTube Laufvideo';iframe.allow='accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share';iframe.allowFullscreen=true;activeVideoKind='youtube';tvSource={kind:'youtube',youtubeId:id};$('video').hidden=true;$('youtube').hidden=false;$('youtube').append(iframe);const attach=()=>{if(window.YT?.Player){try{ytPlayer=new YT.Player(iframe,{events:{onReady:(event)=>{manager.setYoutube(event.target);updateVideoSync();if(session?.running)videoAction('play');},onError:()=>{$('videoHealth').textContent='YouTube: Video nicht abspielbar';}}});}catch(e){announce('YouTube: '+e.message);}}else setTimeout(attach,250);};attach();$('videoTitle').textContent='YouTube-Laufvideo';announce('YouTube-Player geöffnet. Einbettung und Verbindung hängen vom Videoanbieter ab.');}else{activeVideoKind='online';tvSource={kind:'url',url:value};$('video').src=value;manager.setOnline(value);$('videoTitle').textContent='Online-Laufvideo';announce('Onlinevideo geladen. Direkter MP4/WebM-Link erforderlich.');if(session?.running)videoAction('play');}};
 $('video').addEventListener('error',()=>{if($('video').src)announce('Dieses Video konnte nicht abgespielt werden. Bitte direkten MP4/WebM-Link oder lokale Datei verwenden.');});
 
 // HTML5 uses smooth playback rates; YouTube uses the official player's supported steps.
@@ -151,6 +171,6 @@ for(const [field,rules] of Object.entries(profileFields)){
 // Native Windows Chicago library: stream saved files through the local server (supports Range).
 window.virtualWalkingLoadLocalUrl=(url,name)=>{
  try{const u=new URL(url);if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!/^\/library\/[0-9a-f-]{36}$/.test(u.pathname))throw Error('Ungültiger Bibliothekseintrag');
-  videoReset();$('video').src=u.toString();activeVideoKind='html5';manager.setLocal(u.toString());$('videoTitle').textContent=name;announce('Privates Chicago-Video von der Festplatte geladen.');if(session?.running)videoAction('play');
+  videoReset();tvSource={kind:'url',url:u.toString()};$('video').src=u.toString();activeVideoKind='html5';manager.setLocal(u.toString());$('videoTitle').textContent=name;announce('Privates Chicago-Video von der Festplatte geladen.');if(session?.running)videoAction('play');
  }catch(e){announce('Chicago-Video konnte nicht geöffnet werden: '+e.message);}
 };
