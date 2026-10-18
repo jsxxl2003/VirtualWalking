@@ -132,8 +132,21 @@ function updateVideoSync(){const enabled=$('syncEnabled').checked,video=$('video
  $('syncInfo').textContent=`${speed.toFixed(1).replace('.',',')} km/h → ${actual.toFixed(2).replace('.',',')}× Videotempo (Referenz ${ref} km/h)${activeVideoKind==='youtube'?' · YouTube-Stufe':''}.`;
  if(syncPaused&&speed>=.1&&session?.running){syncPaused=false;manager.play();}}
 for(const id of ['syncEnabled','pauseAtZero','referenceSpeed'])$(id).addEventListener('change',updateVideoSync);
-$('weight').value=localStorage.getItem('virtualwalking_weight')||'';
-$('weight').addEventListener('change',()=>{const x=Number($('weight').value);if(!$('weight').value||x<25||x>300)localStorage.removeItem('virtualwalking_weight');else localStorage.setItem('virtualwalking_weight',String(x));ui();});
+// Profile values stay local. Keep the existing weight key for compatibility.
+const profileFields={weight:{min:25,max:300},height:{min:100,max:250},age:{min:10,max:120},gender:{values:['female','male','diverse']}};
+for(const [field,rules] of Object.entries(profileFields)){
+ const input=$(field),key='virtualwalking_'+field;
+ input.value=localStorage.getItem(key)||'';
+ input.addEventListener('change',()=>{
+  const raw=input.value.trim();
+  const value=Number(raw);
+  const valid=!raw||('values' in rules?rules.values.includes(raw):Number.isFinite(value)&&value>=rules.min&&value<=rules.max);
+  if(!valid){$('profileStatus').textContent='Ungültige Angabe bei '+field+' – bitte korrigieren.';return;}
+  try{if(raw)localStorage.setItem(key,raw);else localStorage.removeItem(key);$('profileStatus').textContent='Persönliche Angaben lokal gespeichert.';}
+  catch(e){$('profileStatus').textContent='Speichern nicht möglich: '+e.message;}
+  ui();
+ });
+}
 const routeThemes=[['🌲','Waldwege','POV forest walking 4K treadmill 60 minutes'],['🏖️','Strand','POV beach walk 4K treadmill workout'],['🏙️','Städte','POV city walking tour 4K no talking'],['⛰️','Berge','POV mountain hiking 4K virtual treadmill'],['🌊','Seen & Flüsse','POV lakeside river walk 4K'],['🌷','Parks','POV park walk spring 4K treadmill']];
 function favorites(){try{return JSON.parse(localStorage.getItem('virtualwalking_routes')||'[]')}catch{return []}}
 function renderLibrary(){const root=$('routeLibrary');root.replaceChildren();for(const [emoji,name,query] of routeThemes){const b=document.createElement('button');b.className='route-card';b.textContent=emoji+' '+name;b.title='Videosuche öffnen';b.onclick=()=>window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(query),'_blank','noopener');root.append(b);}
