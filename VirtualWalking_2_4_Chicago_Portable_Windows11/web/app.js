@@ -6,6 +6,29 @@ let device=null, characteristic=null, speed=0, distance=null, session=null, elap
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
 let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false,remoteTvPlaying=false,remoteTvLoaded=false,remoteTvVideoId=null;
 let remoteTvQueue=Promise.resolve();
+let lastRemoteRate=null,lastRemoteRateAt=0;
+function experimentalTvRate(){
+ const status=$('loungeRateStatus'),opt=$('loungeRateExperiment');
+ if(!opt?.checked||!remoteTvMode||!remoteTvLoaded||!remoteTvPlaying||!session?.running||!treadmillIsMoving())return;
+ if(!$('syncEnabled').checked){status.textContent='Geschwindigkeitstest wartet: Synchronisation aktivieren.';return;}
+ const ref=Number($('referenceSpeed').value);
+ if(!Number.isFinite(ref)||ref<1)return;
+ const desired=Math.max(.5,Math.min(2,speed/ref));
+ const rate=tvRateSteps.reduce((best,step)=>Math.abs(step-desired)<Math.abs(best-desired)?step:best,1);
+ const now=Date.now();
+ if(rate===lastRemoteRate||now-lastRemoteRateAt<4000)return;
+ lastRemoteRate=rate;lastRemoteRateAt=now;
+ remoteTvQueue=remoteTvQueue.catch(()=>{}).then(async()=>{
+  if(!remoteTvMode||!remoteTvLoaded||!remoteTvPlaying||!opt.checked)return;
+  try{
+   await window.vwDesktop.loungeSetRate(rate);
+   status.textContent='Testbefehl '+rate.toLocaleString('de-DE')+'× gesendet – bitte Wirkung am Philips prüfen.';
+  }catch(e){
+   opt.checked=false;status.textContent='Geschwindigkeitstest deaktiviert: '+e.message;
+  }
+ });
+}
+
 function treadmillIsMoving(){return !!device?.gatt?.connected&&speed>=0.2;}
 function remoteTvSetPlaying(playing){
  if(!remoteTvMode)return;
@@ -20,7 +43,7 @@ function remoteTvSetPlaying(playing){
     if(!remoteTvLoaded){
      if(!remoteTvVideoId)throw Error('Kein YouTube-Video vorgemerkt.');
      await window.vwDesktop.loungePlay(remoteTvVideoId);
-     remoteTvLoaded=true;
+     remoteTvLoaded=true;lastRemoteRate=null;
     }else await window.vwDesktop.loungeResume();
     $('loungeStatus').textContent='Philips: Video läuft mit dem Laufband.';
    }else if(remoteTvLoaded){
@@ -208,12 +231,17 @@ $('loungePlay').addEventListener('click',()=>{
  if(!window.vwDesktop?.loungePlay){announce('Bitte die neue Windows-EXE starten.');return;}
  const newId=tvSource.youtubeId;
  if(remoteTvVideoId!==newId)remoteTvLoaded=false;
- remoteTvVideoId=newId;remoteTvMode=true;remoteTvPlaying=false;
+ remoteTvVideoId=newId;remoteTvMode=true;remoteTvPlaying=false;lastRemoteRate=null;
  manager.pause();$('video').pause();
  $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
  $('loungeStatus').textContent='Video für Philips vorgemerkt. Start erst bei laufendem Laufband.';
  remoteTvSetPlaying(!!session?.running);
  updateVideoSync();
+});
+$('loungeRateExperiment').addEventListener('change',()=>{
+ lastRemoteRate=null;lastRemoteRateAt=0;
+ $('loungeRateStatus').textContent=$('loungeRateExperiment').checked?'Geschwindigkeitstest aktiv. Starte das Laufband und beobachte den Philips.':'Geschwindigkeitstest aus.';
+ if($('loungeRateExperiment').checked)experimentalTvRate();
 });
 $('loungeBackToApp').addEventListener('click',async()=>{
  const btn=$('loungeBackToApp');btn.disabled=true;
@@ -296,7 +324,7 @@ function begin(fromTreadmill=false){if(!fromTreadmill&&!device?.gatt?.connected)
  if(session){session.running=true;startedAt=Date.now();lastTelemetry=0;}else{session={started:new Date().toISOString(),startDistance:distance,running:true,estimatedKm:0,sumKmhSeconds:0};elapsed=0;startedAt=Date.now();lastTelemetry=0;}videoAction('play');announce('Trainingsaufzeichnung läuft.');ui();}
 function pause(fromTreadmill=false){if(!session?.running)return;if(!fromTreadmill)manualPauseHold=true;elapsed+=(Date.now()-startedAt)/1000;session.running=false;lastTelemetry=0;videoAction('pause');announce('Aufzeichnung pausiert. Das Laufband läuft gegebenenfalls weiter!');ui();}
 function stop(){manualPauseHold=true;if(!session){videoAction('stop');return;}if(session.running)pause(true);const secs=Math.round(elapsed),km=Number(Math.max(0,workoutKm()).toFixed(3));const item={date:session.started,duration:secs,km,averageSpeed:Number((secs?session.sumKmhSeconds/secs:0).toFixed(2)),calories:caloriesFor(session,secs),route:$('videoTitle').textContent,source:device?.gatt?.connected?'FTMS':'Ohne Gerät'};const arr=history();arr.unshift(item);try{localStorage.setItem('virtualwalking_history',JSON.stringify(arr.slice(0,500)));}catch(e){announce('Speicherung fehlgeschlagen: '+e.message);}videoAction('stop');session=null;elapsed=0;renderHistory();announce('Training gespeichert.');ui();}
-$('start').onclick=()=>begin();$('pause').onclick=()=>pause();$('stop').onclick=()=>{automaticStopLock=true;stop();};timer=setInterval(()=>{followTreadmillMotion();if(remoteTvMode)remoteTvSetPlaying(!!session?.running);ui();},500);ui();
+$('start').onclick=()=>begin();$('pause').onclick=()=>pause();$('stop').onclick=()=>{automaticStopLock=true;stop();};timer=setInterval(()=>{followTreadmillMotion();if(remoteTvMode){remoteTvSetPlaying(!!session?.running);experimentalTvRate();}ui();},500);ui();
 function history(){try{return JSON.parse(localStorage.getItem('virtualwalking_history')||'[]')}catch{return []}}
 function renderHistory(){const hist=history();$('history').replaceChildren();if(!hist.length){const t=document.createElement('small');t.textContent='Noch keine abgeschlossenen Einheiten.';$('history').append(t);}for(let h of hist.slice(0,20)){const e=document.createElement('div');e.className='history-item';const a=document.createElement('b');a.textContent=`${Number(h.km||0).toFixed(2).replace('.',',')} km · ${formatTime(h.duration||0)}`;const b=document.createElement('small');b.textContent=`${new Date(h.date).toLocaleString('de-DE')} · Ø ${h.averageSpeed==null?'—':Number(h.averageSpeed).toFixed(1)+' km/h'} · ${h.calories==null?'—':h.calories+' kcal'} · ${h.route||h.source}`;e.append(a,b);$('history').append(e);}const now=new Date(),weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);const monthStart=new Date(now.getFullYear(),now.getMonth(),1);$('summary').replaceChildren();for(const [title,from] of [['Diese Woche',weekStart],['Dieser Monat',monthStart]]){const records=hist.filter(h=>new Date(h.date)>=from);const div=document.createElement('div');div.className='summary-item';const label=document.createElement('small');label.textContent=title;const value=document.createElement('b');value.textContent=`${fmt(records.reduce((n,h)=>n+Number(h.km||0),0))} km`;const sub=document.createElement('small');sub.textContent=`${records.length} Einheiten · ${formatTime(records.reduce((n,h)=>n+Number(h.duration||0),0))}`;div.append(label,value,sub);$('summary').append(div);}}
 renderHistory();
@@ -341,7 +369,7 @@ $('loadUrl').onclick=()=>{const value=$('videoUrl').value.trim();if(!value){anno
 $('video').addEventListener('error',()=>{if($('video').src)announce('Dieses Video konnte nicht abgespielt werden. Bitte direkten MP4/WebM-Link oder lokale Datei verwenden.');});
 
 // HTML5 uses smooth playback rates; YouTube uses the official player's supported steps.
-function updateVideoSync(){if(remoteTvMode){$('syncState').textContent='TV-Modus';$('syncInfo').textContent='App-Player pausiert. TV-Geschwindigkeit noch nicht fernsteuerbar.';return;}
+function updateVideoSync(){if(remoteTvMode){$('syncState').textContent='TV-Modus';$('syncInfo').textContent=$('loungeRateExperiment').checked?'Experimenteller TV-Geschwindigkeitstest aktiv (Wirkung unbestätigt).':'App-Player pausiert. TV-Geschwindigkeitstest optional aktivierbar.';return;}
  const enabled=$('syncEnabled').checked,video=$('video');if(!enabled){$('syncState').textContent='Aus';$('syncInfo').textContent='Synchronisation deaktiviert.';if(['html5','online','youtube'].includes(activeVideoKind))manager.setTargetRate(1);return;}
  if(!['html5','online','youtube'].includes(activeVideoKind)){$('syncState').textContent='Video wählen';return;}
  if(!device?.gatt?.connected){$('syncState').textContent='Warte auf FTMS';$('syncInfo').textContent='Bitte Laufband verbinden. Ohne Live-Daten keine Tempoanpassung.';return;}
