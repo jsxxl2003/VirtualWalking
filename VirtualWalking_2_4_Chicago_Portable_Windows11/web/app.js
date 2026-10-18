@@ -4,16 +4,33 @@ const MACHINE_STATUS='00002ada-0000-1000-8000-00805f9b34fb';
 const $=id=>document.getElementById(id);
 let device=null, characteristic=null, speed=0, distance=null, session=null, elapsed=0, startedAt=0, timer=null, videoObjectUrl=null;
 let lastTelemetry=0, activeVideoKind="none", lastVideoRate=1, syncPaused=false;
-let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false,remoteTvPlaying=false;
+let ytPlayer=null,tvSource=null,tvActive=false,remoteTvMode=false,remoteTvPlaying=false,remoteTvLoaded=false,remoteTvVideoId=null;
 let remoteTvQueue=Promise.resolve();
+function treadmillIsMoving(){return !!device?.gatt?.connected&&speed>=0.2;}
 function remoteTvSetPlaying(playing){
- if(!remoteTvMode||remoteTvPlaying===playing)return;
- remoteTvPlaying=playing;
+ if(!remoteTvMode)return;
+ // TV playback requires actual belt movement; Start alone must not autoplay.
+ const shouldPlay=!!playing&&treadmillIsMoving();
+ if(remoteTvPlaying===shouldPlay)return;
+ remoteTvPlaying=shouldPlay;
  remoteTvQueue=remoteTvQueue.catch(()=>{}).then(async()=>{
   if(!remoteTvMode)return;
-  try{await (playing?window.vwDesktop.loungeResume():window.vwDesktop.loungePause());
-   $('loungeStatus').textContent=playing?'Philips: Wiedergabe fortgesetzt.':'Philips: Pause-Befehl gesendet.';
-  }catch(e){remoteTvPlaying=!playing;$('loungeStatus').textContent='Philips-Steuerung fehlgeschlagen: '+e.message;}
+  try{
+   if(shouldPlay){
+    if(!remoteTvLoaded){
+     if(!remoteTvVideoId)throw Error('Kein YouTube-Video vorgemerkt.');
+     await window.vwDesktop.loungePlay(remoteTvVideoId);
+     remoteTvLoaded=true;
+    }else await window.vwDesktop.loungeResume();
+    $('loungeStatus').textContent='Philips: Video läuft mit dem Laufband.';
+   }else if(remoteTvLoaded){
+    await window.vwDesktop.loungePause();
+    $('loungeStatus').textContent='Philips: Video pausiert.';
+   }
+  }catch(e){
+   remoteTvPlaying=false;
+   $('loungeStatus').textContent='Philips-Steuerung fehlgeschlagen: '+e.message;
+  }
  });
 }
 let statusCharacteristic=null, zeroSince=0, movingSince=0, movingSamples=0;
@@ -184,28 +201,25 @@ $('loungePair').addEventListener('click',async()=>{
  }catch(e){$('loungeStatus').textContent='Kopplung fehlgeschlagen: '+e.message;}
  finally{btn.disabled=false;}
 });
-$('loungePlay').addEventListener('click',async()=>{
- const btn=$('loungePlay');
+$('loungePlay').addEventListener('click',()=>{
  if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
   announce('Bitte zuerst ein YouTube-Video in VirtualWalking auswählen.');return;
  }
  if(!window.vwDesktop?.loungePlay){announce('Bitte die neue Windows-EXE starten.');return;}
- btn.disabled=true;$('loungeStatus').textContent='Video wird an die YouTube-App auf dem Philips gesendet …';
- try{await window.vwDesktop.loungePlay(tvSource.youtubeId);
-  remoteTvMode=true;remoteTvPlaying=true;manager.pause();$('video').pause();
-  // Sending a playlist starts TV playback; match the current training state immediately.
-  if(!session?.running)remoteTvSetPlaying(false);
-  $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
-  $('loungeStatus').textContent='TV-Modus aktiv: App-Player pausiert. Nur der Philips soll abspielen.';
-  updateVideoSync();
- }catch(e){$('loungeStatus').textContent='Videoübertragung fehlgeschlagen: '+e.message;}
- finally{btn.disabled=false;}
+ const newId=tvSource.youtubeId;
+ if(remoteTvVideoId!==newId)remoteTvLoaded=false;
+ remoteTvVideoId=newId;remoteTvMode=true;remoteTvPlaying=false;
+ manager.pause();$('video').pause();
+ $('videoWrap').classList.add('tv-remote');$('loungeBackToApp').hidden=false;
+ $('loungeStatus').textContent='Video für Philips vorgemerkt. Start erst bei laufendem Laufband.';
+ remoteTvSetPlaying(!!session?.running);
+ updateVideoSync();
 });
 $('loungeBackToApp').addEventListener('click',async()=>{
  const btn=$('loungeBackToApp');btn.disabled=true;
  try{
   await window.vwDesktop.loungePause();
-  remoteTvMode=false;remoteTvPlaying=false;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
+  remoteTvMode=false;remoteTvPlaying=false;remoteTvLoaded=false;remoteTvVideoId=null;$('videoWrap').classList.remove('tv-remote');btn.hidden=true;
   if(session?.running)manager.play();
   $('loungeStatus').textContent='App-Modus aktiv: Pause-Befehl an Philips gesendet.';
   updateVideoSync();
@@ -282,7 +296,7 @@ function begin(fromTreadmill=false){if(!fromTreadmill&&!device?.gatt?.connected)
  if(session){session.running=true;startedAt=Date.now();lastTelemetry=0;}else{session={started:new Date().toISOString(),startDistance:distance,running:true,estimatedKm:0,sumKmhSeconds:0};elapsed=0;startedAt=Date.now();lastTelemetry=0;}videoAction('play');announce('Trainingsaufzeichnung läuft.');ui();}
 function pause(fromTreadmill=false){if(!session?.running)return;if(!fromTreadmill)manualPauseHold=true;elapsed+=(Date.now()-startedAt)/1000;session.running=false;lastTelemetry=0;videoAction('pause');announce('Aufzeichnung pausiert. Das Laufband läuft gegebenenfalls weiter!');ui();}
 function stop(){manualPauseHold=true;if(!session){videoAction('stop');return;}if(session.running)pause(true);const secs=Math.round(elapsed),km=Number(Math.max(0,workoutKm()).toFixed(3));const item={date:session.started,duration:secs,km,averageSpeed:Number((secs?session.sumKmhSeconds/secs:0).toFixed(2)),calories:caloriesFor(session,secs),route:$('videoTitle').textContent,source:device?.gatt?.connected?'FTMS':'Ohne Gerät'};const arr=history();arr.unshift(item);try{localStorage.setItem('virtualwalking_history',JSON.stringify(arr.slice(0,500)));}catch(e){announce('Speicherung fehlgeschlagen: '+e.message);}videoAction('stop');session=null;elapsed=0;renderHistory();announce('Training gespeichert.');ui();}
-$('start').onclick=()=>begin();$('pause').onclick=()=>pause();$('stop').onclick=()=>{automaticStopLock=true;stop();};timer=setInterval(()=>{followTreadmillMotion();ui();},500);ui();
+$('start').onclick=()=>begin();$('pause').onclick=()=>pause();$('stop').onclick=()=>{automaticStopLock=true;stop();};timer=setInterval(()=>{followTreadmillMotion();if(remoteTvMode)remoteTvSetPlaying(!!session?.running);ui();},500);ui();
 function history(){try{return JSON.parse(localStorage.getItem('virtualwalking_history')||'[]')}catch{return []}}
 function renderHistory(){const hist=history();$('history').replaceChildren();if(!hist.length){const t=document.createElement('small');t.textContent='Noch keine abgeschlossenen Einheiten.';$('history').append(t);}for(let h of hist.slice(0,20)){const e=document.createElement('div');e.className='history-item';const a=document.createElement('b');a.textContent=`${Number(h.km||0).toFixed(2).replace('.',',')} km · ${formatTime(h.duration||0)}`;const b=document.createElement('small');b.textContent=`${new Date(h.date).toLocaleString('de-DE')} · Ø ${h.averageSpeed==null?'—':Number(h.averageSpeed).toFixed(1)+' km/h'} · ${h.calories==null?'—':h.calories+' kcal'} · ${h.route||h.source}`;e.append(a,b);$('history').append(e);}const now=new Date(),weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);const monthStart=new Date(now.getFullYear(),now.getMonth(),1);$('summary').replaceChildren();for(const [title,from] of [['Diese Woche',weekStart],['Dieser Monat',monthStart]]){const records=hist.filter(h=>new Date(h.date)>=from);const div=document.createElement('div');div.className='summary-item';const label=document.createElement('small');label.textContent=title;const value=document.createElement('b');value.textContent=`${fmt(records.reduce((n,h)=>n+Number(h.km||0),0))} km`;const sub=document.createElement('small');sub.textContent=`${records.length} Einheiten · ${formatTime(records.reduce((n,h)=>n+Number(h.duration||0),0))}`;div.append(label,value,sub);$('summary').append(div);}}
 renderHistory();
@@ -319,7 +333,7 @@ document.addEventListener('keydown',event=>{
   event.preventDefault();renderVideoFullscreen(false);window.vwDesktop.setDesktopFullscreen(false).catch(e=>announce('Vollbild: '+e.message));
  }
 });
-function videoReset(){tvSource=null;manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
+function videoReset(){if(remoteTvMode&&remoteTvLoaded)remoteTvSetPlaying(false);remoteTvLoaded=false;remoteTvVideoId=null;tvSource=null;manager.pause();if(ytPlayer){try{ytPlayer.destroy();}catch{}}ytPlayer=null;activeVideoKind="none";syncPaused=false;const v=$('video');v.pause();v.removeAttribute('src');v.load();if(videoObjectUrl)URL.revokeObjectURL(videoObjectUrl);videoObjectUrl=null;$('youtube').replaceChildren();$('youtube').hidden=true;v.hidden=false;$('placeholder').hidden=true;}
 function loadFile(file){if(!file)return;videoReset();try{const filePath=window.vwDesktop?.localFilePath(file);if(filePath)tvSource={kind:'local',path:filePath};}catch{}videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
 $('fileInput').onchange=e=>loadFile(e.target.files[0]);
 function youtubeId(u){try{const x=new URL(u);let host=x.hostname.replace(/^www\./,'');if(host==='youtu.be')return x.pathname.split('/')[1];if(['youtube.com','m.youtube.com','youtube-nocookie.com'].includes(host)){if(x.pathname==='/watch')return x.searchParams.get('v');let match=x.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/);return match?.[1]??null;}}catch{}return null;}
