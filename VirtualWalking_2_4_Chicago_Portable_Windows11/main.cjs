@@ -319,17 +319,19 @@ function loungeSessionIds(raw){
  }
  return ids;
 }
-async function loungePlay(videoId){
- if(!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId||'')))throw Error('Bitte ein gültiges YouTube-Video auswählen.');
+async function loungeCommand(command,videoId){
+ if(command==='setPlaylist'&&!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId||'')))throw Error('Bitte ein gültiges YouTube-Video auswählen.');
  const token=await loungeToken();
  const base={CVER:1,VER:8,app:'youtube-desktop',device:'REMOTE_CONTROL',id:'virtualwalking',loungeIdToken:token,name:'VirtualWalking'};
  const init=await loungePost('/api/lounge/bc/bind',{...base,RID:1},{});
  const ids=loungeSessionIds(init);
  if(!ids.sid||!ids.gsessionid)throw Error('YouTube-Sitzung konnte nicht geöffnet werden. Bitte YouTube auf dem TV starten.');
  await loungePost('/api/lounge/bc/bind',{...base,RID:2,SID:ids.sid,gsessionid:ids.gsessionid},
-  {count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId});
+  command==='setPlaylist'?{count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId}:{count:1,req0__sc:'pause'});
  return {sent:true};
 }
+async function loungePlay(videoId){return loungeCommand('setPlaylist',videoId);}
+async function loungePause(){return loungeCommand('pause');}
 async function loungeUnpair(){
  loungeState.screenId=null;loungeState.token=null;loungeState.expires=0;
  try{await fsp.unlink(loungeFile());}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -368,6 +370,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:lounge-status',async()=>({paired:!!(await loungeRead()).screenId}));
  ipcMain.handle('vw:lounge-pair',(_event,code)=>loungePair(code));
  ipcMain.handle('vw:lounge-play',(_event,id)=>loungePlay(id));
+ ipcMain.handle('vw:lounge-pause',()=>loungePause());
  ipcMain.handle('vw:lounge-unpair',()=>loungeUnpair());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:check-philips-cast',()=>checkPhilipsCast());
