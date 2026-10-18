@@ -157,17 +157,18 @@ async function checkPhilipsDial(){
 }
 // User-triggered DIAL POST: starts only the YouTube app on the confirmed Philips.
 // It does not cast a video or control playback speed.
-function tvHttpPost(url,expectedIp){
+function tvHttpPost(url,expectedIp,formBody=''){
  return new Promise((resolve,reject)=>{
   let u;try{u=new URL(url);}catch{return reject(Error('Ungültige TV-Adresse'));}
   if(u.protocol!=='http:'||u.hostname!==expectedIp||u.username||u.password)return reject(Error('TV-Adresse nicht freigegeben'));
-  const req=http.request(u,{method:'POST',timeout:4000,headers:{'User-Agent':'VirtualWalking/2.4','Content-Length':'0'}},res=>{
+  const payload=Buffer.from(formBody,'utf8');
+  const req=http.request(u,{method:'POST',timeout:4000,headers:{'User-Agent':'VirtualWalking/2.4','Content-Type':'application/x-www-form-urlencoded','Content-Length':String(payload.length)}},res=>{
    let body='',size=0;
    res.on('data',chunk=>{size+=chunk.length;if(size>8192){req.destroy(Error('TV-Antwort zu groß'));return;}body+=chunk.toString('utf8');});
    res.on('end',()=>resolve({status:res.statusCode,body}));
   });
   req.on('timeout',()=>req.destroy(Error('TV antwortet nicht rechtzeitig')));
-  req.on('error',reject);req.end();
+  req.on('error',reject);req.end(payload);
  });
 }
 async function launchPhilipsYoutube(){
@@ -186,6 +187,26 @@ async function launchPhilipsYoutube(){
   const accepted=[200,201,202,204].includes(response.status);
   return {ok:accepted,status:response.status,message:accepted?'Philips hat den YouTube-Startbefehl angenommen (HTTP '+response.status+'). Bitte prüfen, ob YouTube auf dem TV erscheint. Noch kein Video übertragen.':'Philips hat den Startbefehl nicht angenommen (HTTP '+response.status+').'};
  }catch(e){return {ok:false,message:'YouTube-Start fehlgeschlagen: '+e.message};}
+}
+// Experimental DIAL video launch. Only a valid YouTube ID is sent to the confirmed TV.
+async function sendYoutubeVideoToPhilips(youtubeId){
+ if(typeof youtubeId!=='string'||!/^[a-zA-Z0-9_-]{11}$/.test(youtubeId))return {ok:false,message:'Bitte zuerst ein gültiges YouTube-Laufvideo auswählen.'};
+ const target='192.168.0.27';
+ const devices=await discoverTvReceivers();
+ const entry=devices.find(d=>d.ip===target&&d.kind==='DIAL / YouTube'&&d.location);
+ if(!entry)return {ok:false,message:'Philips unter 192.168.0.27 nicht gefunden. Bitte Netzwerkverbindung prüfen.'};
+ try{
+  const description=await tvHttpGet(entry.location,target);
+  const applicationUrl=String(description.headers['application-url']||'');
+  if(!applicationUrl)return {ok:false,message:'Philips liefert keine DIAL-App-Adresse.'};
+  const base=new URL(applicationUrl);
+  if(base.protocol!=='http:'||base.hostname!==target||base.username||base.password)return {ok:false,message:'DIAL-Adresse gehört nicht zum bestätigten Philips.'};
+  const url=applicationUrl.replace(/\/+$/,'')+'/YouTube';
+  const response=await tvHttpPost(url,target,'v='+encodeURIComponent(youtubeId));
+  const accepted=[200,201,202,204].includes(response.status);
+  if(response.status===403)return {ok:false,status:403,message:'Philips verweigert auch den direkten Videostart (HTTP 403). Bitte weiterhin über das YouTube-Übertragen-Symbol verbinden.'};
+  return {ok:accepted,status:response.status,message:accepted?'Philips hat den Video-Startbefehl angenommen (HTTP '+response.status+'). Bitte prüfen, ob das richtige Video läuft.':'Philips hat den Video-Startbefehl nicht angenommen (HTTP '+response.status+').'};
+ }catch(e){return {ok:false,message:'Direkter Video-Starttest fehlgeschlagen: '+e.message};}
 }
 function tvDisplay(){
  const all=screen.getAllDisplays();const primary=screen.getPrimaryDisplay();
@@ -216,6 +237,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:discover-tv',()=>discoverTvReceivers());
  ipcMain.handle('vw:check-philips-dial',()=>checkPhilipsDial());
  ipcMain.handle('vw:launch-philips-youtube',()=>launchPhilipsYoutube());
+ ipcMain.handle('vw:send-youtube-to-philips',(_event,id)=>sendYoutubeVideoToPhilips(id));
  ipcMain.handle('vw:tv-open',async()=>openTv());
  ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
  ipcMain.handle('vw:tv-load',async(_event,data)=>{
