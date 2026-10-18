@@ -58,6 +58,31 @@ function sendTvState(){
  const playing=!!session?.running&&(!enabled||!$('pauseAtZero').checked||speed>=.1);
  window.vwDesktop.sendTvState({playing,rate,time:null});
 }
+// TV-Direkt-Test: YouTube plays in the TV's own app via the browser's Cast menu.
+// The YouTube remote receiver is NOT controlled by VirtualWalking; show the
+// suggested playback speed honestly rather than claiming automatic TV sync.
+function directTvSuggestedRate(){
+ const ref=Number($('referenceSpeed').value);
+ return $('syncEnabled').checked&&device?.gatt?.connected&&ref>=1
+  ?Math.max(.5,Math.min(2,speed/ref)):1;
+}
+function updateDirectTvHint(){
+ const el=$('directTvRate');
+ if(!el)return;
+ if(tvSource?.kind!=='youtube'){el.textContent='Nur für YouTube-Videos';return;}
+ const rate=directTvSuggestedRate();
+ el.textContent='TV-Tempo manuell einstellen: '+rate.toLocaleString('de-DE',{maximumFractionDigits:2})+'× (Richtwert)';
+}
+$('youtubeDirectTv').addEventListener('click',()=>{
+ if(tvSource?.kind!=='youtube'||!/^[a-zA-Z0-9_-]{11}$/.test(tvSource.youtubeId||'')){
+  announce('Bitte zuerst einen YouTube-Link als Laufvideo öffnen.');return;
+ }
+ const url='https://www.youtube.com/watch?v='+tvSource.youtubeId;
+ // Electron's existing setWindowOpenHandler opens HTTPS links in the system browser.
+ const opened=window.open(url,'_blank','noopener,noreferrer');
+ updateDirectTvHint();
+ announce('YouTube im Browser öffnen, dort Übertragen wählen und Philips auswählen. Die TV-Geschwindigkeit bitte zunächst manuell einstellen.');
+});
 $('sendToTv').addEventListener('click',async()=>{
  if(!window.vwDesktop?.openTv){announce('Die Fernseher-Funktion ist nur in der Windows-EXE verfügbar.');return;}
  if(!tvSource){announce('Bitte zuerst ein Laufvideo auswählen.');return;}
@@ -83,7 +108,7 @@ function formatTime(sec){sec=Math.max(0,Math.floor(sec));return `${String(Math.f
 function workoutKm(){if(!session)return distance??0;const native=(distance!==null&&session.startDistance!==null)?distance-session.startDistance:null;return native!==null&&native>=0?native:session.estimatedKm;}
 function getSeconds(){return elapsed+(session?.running?(Date.now()-startedAt)/1000:0);}
 function caloriesFor(s, secs){const weight=Number($('weight').value);if(!Number.isFinite(weight)||weight<25||weight>300)return null;const avg=secs>0?s.sumKmhSeconds/secs:0;const met=avg<1?1:avg<3?2.5:avg<5?3.5:avg<6.5?4.3:avg<8?6:8.3;return Math.round(met*3.5*weight/200*(secs/60));}
-function ui(){const secs=getSeconds();$('speed').textContent=speed.toFixed(1).replace('.',',');$('distance').textContent=fmt(workoutKm());$('duration').textContent=formatTime(secs);$('averageSpeed').textContent=(session&&secs>0?session.sumKmhSeconds/secs:0).toFixed(1).replace('.',',');const kcal=session?caloriesFor(session,secs):null;$('calories').textContent=kcal===null?'—':kcal;$('start').disabled=!!session?.running;$('pause').disabled=!session?.running;$('stop').disabled=!session;$('start').textContent=session?'▶ Fortsetzen':'▶ Training starten';updateVideoSync();sendTvState();}
+function ui(){const secs=getSeconds();$('speed').textContent=speed.toFixed(1).replace('.',',');$('distance').textContent=fmt(workoutKm());$('duration').textContent=formatTime(secs);$('averageSpeed').textContent=(session&&secs>0?session.sumKmhSeconds/secs:0).toFixed(1).replace('.',',');const kcal=session?caloriesFor(session,secs):null;$('calories').textContent=kcal===null?'—':kcal;$('start').disabled=!!session?.running;$('pause').disabled=!session?.running;$('stop').disabled=!session;$('start').textContent=session?'▶ Fortsetzen':'▶ Training starten';updateVideoSync();sendTvState();updateDirectTvHint();}
 // FTMS 0x2ACD: flags uint16 LE, instantaneous speed uint16 / 100 km/h,
 // optional avg speed (bit 1), total distance (bit 2, uint24 meters), etc.
 function parseTreadmillData(view){if(view.byteLength<2)throw new Error('Zu kurzes FTMS-Datenpaket');let flags=view.getUint16(0,true), pos=2;const take=n=>{if(pos+n>view.byteLength)throw new Error('Unvollständige FTMS-Daten');let at=pos;pos+=n;return at;};let nextSpeed=null, nextDistance=null;
