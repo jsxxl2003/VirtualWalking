@@ -100,6 +100,14 @@ $('directTvConnected').addEventListener('change',()=>{
  updateDirectTvHint();
 });
 $('directTvVoice').addEventListener('change',()=>{lastTvSpokenRate=null;if(!$('directTvVoice').checked&&'speechSynthesis' in window)window.speechSynthesis.cancel();});
+$('launchPhilipsYoutube').addEventListener('click',async()=>{
+ const button=$('launchPhilipsYoutube'),status=$('philipsDialStatus');
+ if(!window.vwDesktop?.launchPhilipsYoutube){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
+ button.disabled=true;status.textContent='Sende YouTube-Startbefehl direkt an Philips 192.168.0.27 …';
+ try{const result=await window.vwDesktop.launchPhilipsYoutube();status.textContent=result.message;}
+ catch(e){status.textContent='TV-Starttest fehlgeschlagen: '+e.message;}
+ finally{button.disabled=false;}
+});
 $('checkPhilipsDial').addEventListener('click',async()=>{
  const button=$('checkPhilipsDial'),status=$('philipsDialStatus');
  if(!window.vwDesktop?.checkPhilipsDial){status.textContent='Nur in der Windows-EXE verfügbar.';return;}
