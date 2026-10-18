@@ -291,6 +291,7 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:remove-chicago',(_event,id)=>removeFile(id));
  ipcMain.handle('vw:download-chicago',(_event,args)=>downloadVideo(args));
  ipcMain.handle('vw:chicago-path',()=>libraryDir());
+ ipcMain.handle('vw:open-chicago-folder',async()=>{await ensureDir();const error=await shell.openPath(libraryDir());if(error)throw Error(error);return true;});
  win=new BrowserWindow({width:1460,height:960,minWidth:850,minHeight:620,autoHideMenuBar:true,
   webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(__dirname,'preload.cjs')}});
  win.on('enter-full-screen',()=>win.webContents.send('vw:desktop-fullscreen-state',true));
