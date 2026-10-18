@@ -126,3 +126,9 @@ main{padding-top:14px}
  .hero{grid-template-columns:1fr;gap:10px}
  .hero .connection{max-width:none}
 }
+
+/* Keep TV casting simple; technical diagnostics are available on demand. */
+.tv-settings{margin:8px 0 10px;border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+.tv-settings>summary,.tv-diagnostics>summary{cursor:pointer;color:var(--muted);font-size:12px}
+.tv-settings[open]>.tv-discovery{margin-top:12px}
+#youtubeDirectTv{border-color:var(--green);font-weight:700}
