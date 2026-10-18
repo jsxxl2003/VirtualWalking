@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('vwDesktop',{
  onDesktopFullscreenState:callback=>ipcRenderer.on('vw:desktop-fullscreen-state',(_e,active)=>callback(active)),
  discoverTv:()=>ipcRenderer.invoke('vw:discover-tv'),
  checkPhilipsDial:()=>ipcRenderer.invoke('vw:check-philips-dial'),
+ checkPhilipsCast:()=>ipcRenderer.invoke('vw:check-philips-cast'),
  launchPhilipsYoutube:()=>ipcRenderer.invoke('vw:launch-philips-youtube'),
  sendYoutubeToPhilips:id=>ipcRenderer.invoke('vw:send-youtube-to-philips',id),
  openTv:()=>ipcRenderer.invoke('vw:tv-open'),
