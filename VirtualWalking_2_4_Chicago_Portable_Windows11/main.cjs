@@ -363,8 +363,22 @@ async function loungeCommand(command,videoId){
  const init=await loungePost('/api/lounge/bc/bind',{...base,RID:1},{});
  const ids=loungeSessionIds(init);
  if(!ids.sid||!ids.gsessionid)throw Error('YouTube-Sitzung konnte nicht geöffnet werden. Bitte YouTube auf dem TV starten.');
- await loungePost('/api/lounge/bc/bind',{...base,RID:2,SID:ids.sid,gsessionid:ids.gsessionid},
+ const reply=await loungePost('/api/lounge/bc/bind',{...base,RID:2,SID:ids.sid,gsessionid:ids.gsessionid},
   command==='setPlaylist'?{count:1,req0__sc:'setPlaylist',req0_currentIndex:0,req0_currentTime:0,req0_videoId:videoId,req0_videoIds:videoId}:command==='setPlaybackRate'?{count:1,req0__sc:'setPlaybackRate',req0_playbackRate:videoId}:{count:1,req0__sc:command});
+ // HTTP success only confirms transport. The TV may ignore unsupported Lounge commands.
+ if(command==='setPlaybackRate'){
+  const eventNames=[];
+  const collect=node=>{
+   if(!Array.isArray(node))return;
+   if(typeof node[0]==='string'&&/^[a-zA-Z][a-zA-Z0-9_]{0,35}$/.test(node[0]))eventNames.push(node[0]);
+   for(const part of node)if(Array.isArray(part))collect(part);
+  };
+  for(const match of reply.matchAll(/(?:^|\n)(\d+)\n/g)){
+   const pos=match.index+match[0].length,len=Number(match[1]);
+   if(len>0&&len<100000){try{collect(JSON.parse(reply.slice(pos,pos+len)));}catch{}}
+  }
+  return {sent:true,transport:'HTTP 2xx',requestedRate:Number(videoId),responseEvents:[...new Set(eventNames)].slice(0,12),tvRateConfirmed:false};
+ }
  return {sent:true};
 }
 async function loungePlay(videoId){return loungeCommand('setPlaylist',videoId);}
