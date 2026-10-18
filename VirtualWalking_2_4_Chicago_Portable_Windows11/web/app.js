@@ -379,6 +379,25 @@ function videoReset(){if(remoteTvMode&&remoteTvLoaded){remoteTvQueue=remoteTvQue
 function loadFile(file){if(!file)return;videoReset();try{const filePath=window.vwDesktop?.localFilePath(file);if(filePath)tvSource={kind:'local',path:filePath};}catch{}videoObjectUrl=URL.createObjectURL(file);$('video').src=videoObjectUrl;activeVideoKind='html5';manager.setLocal(videoObjectUrl);$('videoTitle').textContent=file.name;announce('Lokales Video geladen.');if(session?.running)videoAction('play');}
 $('fileInput').onchange=e=>loadFile(e.target.files[0]);
 function youtubeId(u){try{const x=new URL(u);let host=x.hostname.replace(/^www\./,'');if(host==='youtu.be')return x.pathname.split('/')[1];if(['youtube.com','m.youtube.com','youtube-nocookie.com'].includes(host)){if(x.pathname==='/watch')return x.searchParams.get('v');let match=x.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/);return match?.[1]??null;}}catch{}return null;}
+// Isolated Kinomap embed feasibility test. No unsupported remote-control commands are sent.
+$('kinomapTry').addEventListener('click',()=>{
+ const status=$('kinomapStatus'),frame=$('kinomapFrame');
+ let url;
+ try{
+  url=new URL($('kinomapUrl').value.trim());
+  if(url.protocol!=='https:'||!['kinomap.com','www.kinomap.com','videos.kinomap.com'].includes(url.hostname))throw Error('Bitte einen HTTPS-Link zu Kinomap eingeben.');
+ }catch(e){status.textContent=e.message||'Ungültige Kinomap-Adresse.';return;}
+ $('kinomapFrameArea').hidden=false;
+ status.textContent='Kinomap-Seite wird im Testfenster angefordert. Ein Ladeereignis bestätigt noch keine abspielbare Einbettung.';
+ frame.src=url.toString();
+});
+$('kinomapFrame').addEventListener('load',()=>{
+ $('kinomapStatus').textContent='Einbettungsanfrage abgeschlossen. Bitte prüfen, ob die Kinomap-Strecke sichtbar und abspielbar ist. Externe Geschwindigkeitssteuerung ist weiterhin nicht nachgewiesen.';
+});
+$('kinomapClose').addEventListener('click',()=>{
+ $('kinomapFrame').removeAttribute('src');$('kinomapFrameArea').hidden=true;
+ $('kinomapStatus').textContent='Kinomap-Test geschlossen.';
+});
 let lastVideoChoice=null;
 function rememberLastVideo(url,name){
  try{localStorage.setItem('virtualwalking_last_video',JSON.stringify({url,name}));}catch{}
