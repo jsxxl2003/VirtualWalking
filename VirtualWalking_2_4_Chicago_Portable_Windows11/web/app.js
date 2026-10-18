@@ -163,7 +163,7 @@ $('youtubeDirectTv').addEventListener('click',()=>{
  // Electron's existing setWindowOpenHandler opens HTTPS links in the system browser.
  const opened=window.open(url,'_blank','noopener,noreferrer');
  updateDirectTvHint();
- announce('YouTube im Browser öffnen, dort Übertragen wählen und Philips auswählen. Die TV-Geschwindigkeit bitte zunächst manuell einstellen.');
+ announce('YouTube wurde im Browser geöffnet. Beim ersten Mal Philips über „Übertragen“ auswählen. Beim nächsten Video prüfen, ob die Chrome-Verbindung bestehen bleibt.');
 });
 $('sendToTv').addEventListener('click',async()=>{
  if(!window.vwDesktop?.openTv){announce('Die Fernseher-Funktion ist nur in der Windows-EXE verfügbar.');return;}
