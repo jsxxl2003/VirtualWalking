@@ -1,6 +1,14 @@
  'use strict';
-const {contextBridge,ipcRenderer}=require('electron');
+const {contextBridge,ipcRenderer,webUtils}=require('electron');
 contextBridge.exposeInMainWorld('vwDesktop',{
+ openTv:()=>ipcRenderer.invoke('vw:tv-open'),
+ closeTv:()=>ipcRenderer.invoke('vw:tv-close'),
+ loadTv:data=>ipcRenderer.invoke('vw:tv-load',data),
+ sendTvState:data=>ipcRenderer.send('vw:tv-state',data),
+ onTvLoad:callback=>ipcRenderer.on('vw:tv-load',(_e,data)=>callback(data)),
+ onTvState:callback=>ipcRenderer.on('vw:tv-state',(_e,data)=>callback(data)),
+ onTvClosed:callback=>ipcRenderer.on('vw:tv-closed',()=>callback()),
+ localFilePath:file=>webUtils.getPathForFile(file),
  listChicago:()=>ipcRenderer.invoke('vw:list-chicago'),
  importChicago:()=>ipcRenderer.invoke('vw:import-chicago'),
  removeChicago:id=>ipcRenderer.invoke('vw:remove-chicago',id),
