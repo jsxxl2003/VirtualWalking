@@ -113,6 +113,11 @@ app.whenReady().then(async()=>{
  port=await startServer();
  session.defaultSession.setPermissionCheckHandler((_wc,p)=>p==='bluetooth'||p==='bluetoothScanning');
  session.defaultSession.setPermissionRequestHandler((_wc,p,cb)=>cb(p==='bluetooth'||p==='bluetoothScanning'));
+ ipcMain.handle('vw:desktop-fullscreen',(_event,enabled)=>{
+  if(!win||win.isDestroyed())return false;
+  win.setFullScreen(!!enabled);
+  return win.isFullScreen();
+ });
  ipcMain.handle('vw:tv-open',async()=>openTv());
  ipcMain.handle('vw:tv-close',()=>{if(tvWin&&!tvWin.isDestroyed())tvWin.close();return true;});
  ipcMain.handle('vw:tv-load',async(_event,data)=>{
@@ -142,6 +147,8 @@ app.whenReady().then(async()=>{
  ipcMain.handle('vw:chicago-path',()=>libraryDir());
  win=new BrowserWindow({width:1460,height:960,minWidth:850,minHeight:620,autoHideMenuBar:true,
   webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(__dirname,'preload.cjs')}});
+ win.on('enter-full-screen',()=>win.webContents.send('vw:desktop-fullscreen-state',true));
+ win.on('leave-full-screen',()=>win.webContents.send('vw:desktop-fullscreen-state',false));
  // Windows-Kontextmenue fuer Eingabefelder, insbesondere Video-URL.
  win.webContents.on('context-menu',(_event,params)=>{
   if(!params.isEditable)return;
