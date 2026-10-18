@@ -101,7 +101,32 @@ app.whenReady().then(async()=>{
   ];
   Menu.buildFromTemplate(template).popup({window:win});
  });
- win.webContents.on('select-bluetooth-device',(event,devices,callback)=>{event.preventDefault();const selected=devices.find(d=>/WELLFIT TM Linker/i.test(d.deviceName))||devices.find(d=>/WELLFIT/i.test(d.deviceName))||devices[0];callback(selected?.deviceId||'');});
+ // Electron liefert die Bluetooth-Geraeteliste asynchron und oft zunaechst leer.
+// Eine leere erste Liste darf die Auswahl nicht mit callback('') abbrechen.
+let bluetoothSelection=null;
+win.webContents.on('select-bluetooth-device',(event,devices,callback)=>{
+ event.preventDefault();
+ if(!bluetoothSelection||bluetoothSelection.callback!==callback){
+  if(bluetoothSelection?.timer)clearTimeout(bluetoothSelection.timer);
+  bluetoothSelection={callback,devices:new Map(),timer:null};
+ }
+ const selection=bluetoothSelection;
+ for(const d of devices||[])if(d.deviceId)selection.devices.set(d.deviceId,d);
+ const available=[...selection.devices.values()];
+ const preferred=available.find(d=>/WELLFIT TM Linker/i.test(d.deviceName||''))
+   ||available.find(d=>/WELLFIT/i.test(d.deviceName||''));
+ const choose=(d)=>{
+  if(bluetoothSelection!==selection)return;
+  if(selection.timer)clearTimeout(selection.timer);
+  bluetoothSelection=null;
+  callback(d?.deviceId||'');
+ };
+ if(preferred){choose(preferred);return;}
+ // Andere FTMS-Geraete nur als Fallback, damit der WELLFIT Zeit zum Melden hat.
+ if(available.length&&!selection.timer){
+  selection.timer=setTimeout(()=>choose([...selection.devices.values()][0]),8000);
+ }
+});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return {action:'deny'};});
  await win.loadURL(`http://127.0.0.1:${port}`);
 }).catch(e=>{dialog.showErrorBox('VirtualWalking konnte nicht starten',String(e));app.quit();});
